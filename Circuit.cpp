@@ -1,6 +1,21 @@
 #include "Circuit.h"
 #include "Gates.h"
 
+void Circuit::number() {
+    int i = 0;
+    for (auto& wire : wires) {
+        wire->id = ++i;
+    }
+}
+
+Problem Circuit::generateCNF() const {
+    Problem p;
+    for (auto& gate : gates) {
+        gate->emplaceCNF(p);
+    }
+    return std::move(p);
+}
+
 Node::Node(Circuit* c, Node::NODE_TYPE t) : circuit(c), type(t) {
     switch (type) {
         case NODE_TYPE::INPUT:

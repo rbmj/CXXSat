@@ -1,23 +1,28 @@
 #ifndef GRAPH_H_INC
 #define GRAPH_H_INC
 
+#include <iostream>
+
+
 #include <vector>
 #include <memory>
 #include <utility>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
+#include <string>
 #include <assert.h>
 
 #include "Range.h"
 #include "Sat.h"
+#include "Argument.h"
+#include "Variable.h"
 
 class Node;
 class Wire;
 class Input;
 class Value;
 class Gate;
-class Variable;
-class Argument;
 
 class Circuit {
     friend class Node;
@@ -47,12 +52,33 @@ private:
     void unreg(Wire* w) {
         wires.erase(wires.find(w));
     }
-    std::unique_ptr<Variable> return_value;
-    std::vector<std::unique_ptr<Argument>> arguments;
+    //Order of declaration is important (unfortunately)
+    //These must be declared first, so that they are destroyed
     std::unordered_set<Input*> inputs;
     std::unordered_set<Value*> outputs;
     std::unordered_set<Gate*> gates;
     std::unordered_set<Wire*> wires;
+    //declare these after
+    std::vector<std::shared_ptr<Variable>> return_values;
+    std::unordered_map<std::string, std::shared_ptr<Argument>> arguments;
+    std::shared_ptr<Input> lit0;
+    std::shared_ptr<Input> lit1;
+public:
+    template <class T, class... Args>
+    std::shared_ptr<T> addArgument(std::string s, Args&&... args) {
+        auto ptr = std::make_shared<T>(this, std::forward<Args>(args)...);
+        arguments.emplace(std::move(s), ptr);
+        return ptr;
+    }
+    template <class T, class U>
+    const T& getLiteral(U u) {
+        return T::getLiteral(u, lit0, lit1);
+    }
+    void yield(const std::shared_ptr<Variable>& v) {
+        return_values.push_back(v);
+    }
+    void number();
+    Problem generateCNF() const;
 };
 
 class Node {
@@ -110,7 +136,7 @@ public:
     ~Wire() {
         c->unreg(this);
     }
-    int ID();
+    int ID() { return id; }
     void connect(Node* n) {
         to.push_back(n);
     }
@@ -145,13 +171,16 @@ public:
             auto ptr = self.lock();
             assert(ptr);
             auto ret = std::make_shared<Wire>(ptr);
-            wire = ret;
+            out_wire = ret;
             return ret;
         }
     }
+    int getID() const {
+        return getWire()->ID();
+    }
     explicit Input(Circuit* c) : Node(c, NODE_TYPE::INPUT) {} //DO NOT USE
 private:
-    std::weak_ptr<Wire> out_wire;
+    mutable std::weak_ptr<Wire> out_wire;
     std::weak_ptr<Node> self;
 };
 
@@ -172,8 +201,23 @@ public:
     {
         _source->connect(this);
     }
+    static std::shared_ptr<Value> create(const std::shared_ptr<Value>& v) {
+        return std::make_shared<Value>(*v);
+    }
+    static std::shared_ptr<Value> create(const std::shared_ptr<Input>& i) {
+        return std::make_shared<Value>(*i);
+    }
+    std::shared_ptr<Value> clone() const {
+        return std::make_shared<Value>(*this);
+    }
     std::shared_ptr<Wire> source() const {
         return _source;
+    }
+    ~Value() {
+        _source->disconnect(this);
+    }
+    int getID() const {
+        return _source->ID();
     }
 private:
     std::shared_ptr<Wire> _source;
