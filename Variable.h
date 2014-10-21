@@ -7,7 +7,6 @@
 #include <memory>
 #include <vector>
 
-class Circuit;
 class Value;
 
 typedef std::vector<std::shared_ptr<Value>> BitVector;

@@ -16,37 +16,43 @@ Problem Circuit::generateCNF() const {
     return std::move(p);
 }
 
-Node::Node(Circuit* c, Node::NODE_TYPE t) : circuit(c), type(t) {
-    switch (type) {
-        case NODE_TYPE::INPUT:
-            circuit->reg(asInput());
-            break;
-        case NODE_TYPE::VALUE:
-            circuit->reg(asValue());
-            break;
-        case NODE_TYPE::GATE:
-            circuit->reg(asGate());
-            break;
-        default:
-            assert(false);
-            break;
+Node::Node(const std::weak_ptr<Circuit>& c, Node::NODE_TYPE t)
+    : circuit(c), type(t) 
+{
+    if (auto ptr = circuit.lock()) {
+        switch (type) {
+            case NODE_TYPE::INPUT:
+                ptr->reg(asInput());
+                break;
+            case NODE_TYPE::VALUE:
+                ptr->reg(asValue());
+                break;
+            case NODE_TYPE::GATE:
+                ptr->reg(asGate());
+                break;
+            default:
+                assert(false);
+                break;
+        }
     }
 }
 
 Node::~Node() {
-    switch (type) {
-        case NODE_TYPE::INPUT:
-            circuit->unreg(asInput());
-            break;
-        case NODE_TYPE::VALUE:
-            circuit->unreg(asValue());
-            break;
-        case NODE_TYPE::GATE:
-            circuit->unreg(asGate());
-            break;
-        default:
-            assert(false);
-            break;
+    if (auto ptr = circuit.lock()) {
+        switch (type) {
+            case NODE_TYPE::INPUT:
+                ptr->unreg(asInput());
+                break;
+            case NODE_TYPE::VALUE:
+                ptr->unreg(asValue());
+                break;
+            case NODE_TYPE::GATE:
+                ptr->unreg(asGate());
+                break;
+            default:
+                assert(false);
+                break;
+        }
     }
 }
 

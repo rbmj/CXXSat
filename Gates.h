@@ -15,7 +15,7 @@ public:
         return wire;
     }
 protected:
-    GateBase(Circuit* c) : Gate(c) {}
+    GateBase(const std::weak_ptr<Circuit>& c) : Gate(c) {}
     virtual ~GateBase() {}
 };
 
@@ -34,7 +34,15 @@ public:
 private:
     std::shared_ptr<Wire> a;
 };
-        
+
+static inline bool circuitsEqual(const std::weak_ptr<Circuit>& a,
+        const std::weak_ptr<Circuit>& b)
+{
+    auto x = a.lock();
+    auto y = b.lock();
+    return (x && y && x == y) || (!x && !y);
+}
+
 template <class DerivedGate>
 class BinaryGate : public GateBase<DerivedGate> {
 protected:
@@ -44,7 +52,7 @@ public:
     BinaryGate(const Value& _a, const Value& _b)
         : GateBase<DerivedGate>(_a.getCircuit())
     {
-        assert(_a.getCircuit() == _b.getCircuit());
+        assert(circuitsEqual(_a.getCircuit(), _b.getCircuit()));
         a = _a.source();
         b = _b.source();
         a->connect(this);

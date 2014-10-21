@@ -63,10 +63,17 @@ private:
     std::unordered_map<std::string, std::shared_ptr<Argument>> arguments;
     std::shared_ptr<Input> lit0;
     std::shared_ptr<Input> lit1;
+    std::weak_ptr<Circuit> self;
 public:
+    Circuit() = default;
+    static std::shared_ptr<Circuit> create() {
+        auto ptr = std::make_shared<Circuit>();
+        ptr->self = ptr;
+        return std::move(ptr);
+    }
     template <class T, class... Args>
     std::shared_ptr<T> addArgument(std::string s, Args&&... args) {
-        auto ptr = std::make_shared<T>(this, std::forward<Args>(args)...);
+        auto ptr = std::make_shared<T>(self, std::forward<Args>(args)...);
         arguments.emplace(std::move(s), ptr);
         return ptr;
     }
@@ -88,10 +95,10 @@ protected:
         VALUE,
         GATE
     };
-    Circuit * circuit;
+    std::weak_ptr<Circuit> circuit;
     NODE_TYPE type;
 public:
-    Node(Circuit* c, NODE_TYPE t);
+    Node(const std::weak_ptr<Circuit>& c, NODE_TYPE t);
     virtual ~Node() = 0;
     bool isInput() const {
         return type == NODE_TYPE::INPUT;
@@ -120,7 +127,7 @@ public:
     Gate* asGate() {
         return (Gate*)this;
     }
-    Circuit* getCircuit() const {
+    const std::weak_ptr<Circuit>& getCircuit() const {
         return circuit;
     }
 };
@@ -131,10 +138,14 @@ public:
     explicit Wire(std::shared_ptr<Node> n) 
         : from(n), c(n->getCircuit()), id(0) 
     {
-        c->reg(this);
+        if (auto circuit = c.lock()) {
+            circuit->reg(this);
+        }
     }
     ~Wire() {
-        c->unreg(this);
+        if (auto circuit = c.lock()) {
+            circuit->unreg(this);
+        }
     }
     int ID() { return id; }
     void connect(Node* n) {
@@ -143,20 +154,20 @@ public:
     void disconnect(Node* n) {
         to.erase(std::remove(to.begin(), to.end(), n));
     }
-    Circuit* getCircuit() {
+    const std::weak_ptr<Circuit>& getCircuit() {
         return c;
     }
 private:
     std::shared_ptr<Node> from;
     std::vector<Node*> to;
-    Circuit* c;
+    std::weak_ptr<Circuit> c;
     int id;
 };
 
 class Input : public Node {
 public:
-    static std::shared_ptr<Input> create(Circuit* c) {
-        auto ptr = std::make_shared<Input>(c);
+    static std::shared_ptr<Input> create(std::weak_ptr<Circuit> c) {
+        auto ptr = std::make_shared<Input>(std::move(c));
         ptr->self = ptr;
         return ptr;
     }
@@ -178,7 +189,8 @@ public:
     int getID() const {
         return getWire()->ID();
     }
-    explicit Input(Circuit* c) : Node(c, NODE_TYPE::INPUT) {} //DO NOT USE
+    //DO NOT USE
+    explicit Input(std::weak_ptr<Circuit> c) : Node(c, NODE_TYPE::INPUT) {}
 private:
     mutable std::weak_ptr<Wire> out_wire;
     std::weak_ptr<Node> self;
@@ -245,7 +257,8 @@ public:
         }
     }
 private:
-    explicit Gate(Circuit* c) : Node(c, NODE_TYPE::GATE) {}
+    explicit Gate(const std::weak_ptr<Circuit>& c)
+        : Node(c, NODE_TYPE::GATE) {}
     void init(std::weak_ptr<Wire> w) {
         out_wire = w;
     }

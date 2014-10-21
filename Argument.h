@@ -28,7 +28,7 @@ public:
 class BitVar;
 class BitArgument : public Argument {
 public:
-    BitArgument(Circuit* c);
+    BitArgument(const std::weak_ptr<Circuit>& c);
     std::string sprint() {
         return "IMPLEMENT";
     }
