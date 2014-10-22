@@ -4,14 +4,14 @@
 Variable::~Variable() {}
 
 BitVar::BitVar(const BitArgument& arg) {
-    getBits().push_back(Value::create(arg.getInputs().at(0)));
+    getBits().push_back(Circuit::Value::create(arg.getInputs().at(0)));
 }
 
 BitVar::BitVar(const BitVar& v) {
     getBits().push_back(v.getBits().at(0)->clone());
 }
 
-BitVar::BitVar(std::shared_ptr<Value> v) {
+BitVar::BitVar(std::shared_ptr<Circuit::Value> v) {
     getBits().push_back(std::move(v));
 }
 

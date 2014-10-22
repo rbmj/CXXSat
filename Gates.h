@@ -5,38 +5,38 @@
 #include <assert.h>
 
 template <class DerivedGate>
-class GateBase : public Gate {
+class Circuit::GateBase : public Circuit::Gate {
 public:
     template <class... Args>
-    static std::shared_ptr<Wire> create(Args&&... args) {
+    static std::shared_ptr<Circuit::Wire> create(Args&&... args) {
         auto dg = std::make_shared<DerivedGate>(std::forward<Args>(args)...);
         auto wire = std::make_shared<Wire>(dg);
         dg->init(wire);
         return wire;
     }
 protected:
-    GateBase(const std::weak_ptr<Circuit>& c) : Gate(c) {}
+    GateBase(const std::weak_ptr<Circuit::impl>& c) : Gate(c) {}
     virtual ~GateBase() {}
 };
 
-class NotGate : public GateBase<NotGate> {
-    friend class GateBase<NotGate>;
+class NotGate : public Circuit::GateBase<NotGate> {
+    friend class Circuit::GateBase<NotGate>;
 public:
     ~NotGate() {
         a->disconnect(this);
     }
     void emplaceCNF(Problem& p);
     //DO NOT USE:
-    NotGate(const Value& _a) : GateBase<NotGate>(_a.getCircuit()) {
+    NotGate(const Circuit::Value& _a) : GateBase<NotGate>(_a.getCircuit()) {
         a = _a.source();
         a->connect(this);
     }
 private:
-    std::shared_ptr<Wire> a;
+    std::shared_ptr<Circuit::Wire> a;
 };
 
-static inline bool circuitsEqual(const std::weak_ptr<Circuit>& a,
-        const std::weak_ptr<Circuit>& b)
+static inline bool circuitsEqual(const std::weak_ptr<Circuit::impl>& a,
+        const std::weak_ptr<Circuit::impl>& b)
 {
     auto x = a.lock();
     auto y = b.lock();
@@ -44,13 +44,13 @@ static inline bool circuitsEqual(const std::weak_ptr<Circuit>& a,
 }
 
 template <class DerivedGate>
-class BinaryGate : public GateBase<DerivedGate> {
+class BinaryGate : public Circuit::GateBase<DerivedGate> {
 protected:
-    std::shared_ptr<Wire> a;
-    std::shared_ptr<Wire> b;
+    std::shared_ptr<Circuit::Wire> a;
+    std::shared_ptr<Circuit::Wire> b;
 public:
-    BinaryGate(const Value& _a, const Value& _b)
-        : GateBase<DerivedGate>(_a.getCircuit())
+    BinaryGate(const Circuit::Value& _a, const Circuit::Value& _b)
+        : Circuit::GateBase<DerivedGate>(_a.getCircuit())
     {
         assert(circuitsEqual(_a.getCircuit(), _b.getCircuit()));
         a = _a.source();

@@ -5,9 +5,9 @@
 #include <vector>
 #include <string>
 
-class Circuit;
-class Input;
-typedef std::vector<std::shared_ptr<Input>> InputVec;
+#include "Circuit.h"
+
+typedef std::vector<std::shared_ptr<Circuit::Input>> InputVec;
 
 class Argument {
 private:
@@ -28,7 +28,7 @@ public:
 class BitVar;
 class BitArgument : public Argument {
 public:
-    BitArgument(const std::weak_ptr<Circuit>& c);
+    BitArgument(const std::weak_ptr<Circuit::impl>& c);
     std::string sprint() {
         return "IMPLEMENT";
     }

@@ -1,22 +1,77 @@
 #include "Circuit.h"
 #include "Gates.h"
 
+struct Circuit::impl {
+    void reg(Input* i) {
+        inputs.insert(i);
+    }
+    void unreg(Input* i) {
+        inputs.erase(inputs.find(i));
+    }
+    void reg(Value* v) {
+        outputs.insert(v);
+    }
+    void unreg(Value* v) {
+        outputs.erase(outputs.find(v));
+    }
+    void reg(Gate* g) {
+        gates.insert(g);
+    }
+    void unreg(Gate* g) {
+        gates.erase(gates.find(g));
+    }
+    void reg(Wire* w) {
+        wires.insert(w);
+    }
+    void unreg(Wire* w) {
+        wires.erase(wires.find(w));
+    }
+    std::unordered_set<Input*> inputs;
+    std::unordered_set<Value*> outputs;
+    std::unordered_set<Gate*> gates;
+    std::unordered_set<Wire*> wires;
+    std::vector<std::shared_ptr<Variable>> return_values;
+    std::unordered_map<std::string, std::shared_ptr<Argument>> arguments;
+    std::shared_ptr<Input> lit0;
+    std::shared_ptr<Input> lit1;
+    std::weak_ptr<Circuit::impl> self;
+};
+
+Circuit::Circuit() {
+    pimpl = std::make_shared<Circuit::impl>();
+    pimpl->self = pimpl;
+}
+
+const std::weak_ptr<Circuit::impl>& Circuit::pimpl_get_self() const {
+    return pimpl->self;
+}
+
+void Circuit::pimpl_emplace_argument(std::string s,
+        std::shared_ptr<Argument> ptr)
+{
+    pimpl->arguments.emplace(std::move(s), std::move(ptr));
+}
+
+void Circuit::yield(const std::shared_ptr<Variable>& v) {
+    pimpl->return_values.push_back(v);
+}
+
 void Circuit::number() {
     int i = 0;
-    for (auto& wire : wires) {
+    for (auto& wire : pimpl->wires) {
         wire->id = ++i;
     }
 }
 
 Problem Circuit::generateCNF() const {
     Problem p;
-    for (auto& gate : gates) {
+    for (auto& gate : pimpl->gates) {
         gate->emplaceCNF(p);
     }
     return std::move(p);
 }
 
-Node::Node(const std::weak_ptr<Circuit>& c, Node::NODE_TYPE t)
+Circuit::Node::Node(const std::weak_ptr<Circuit::impl>& c, Node::NODE_TYPE t)
     : circuit(c), type(t) 
 {
     if (auto ptr = circuit.lock()) {
@@ -37,7 +92,7 @@ Node::Node(const std::weak_ptr<Circuit>& c, Node::NODE_TYPE t)
     }
 }
 
-Node::~Node() {
+Circuit::Node::~Node() {
     if (auto ptr = circuit.lock()) {
         switch (type) {
             case NODE_TYPE::INPUT:
@@ -56,31 +111,45 @@ Node::~Node() {
     }
 }
 
-std::shared_ptr<Value> And(std::shared_ptr<Value> a, std::shared_ptr<Value> b) {
-    return std::make_shared<Value>(AndGate::create(*a, *b));
+Circuit::Wire::Wire(const std::shared_ptr<Node>& n) 
+    : from(n), c(n->getCircuit()), id(0) 
+{
+    if (auto circuit = c.lock()) {
+        circuit->reg(this);
+    }
 }
 
-std::shared_ptr<Value> Nand(std::shared_ptr<Value> a, std::shared_ptr<Value> b) {
-    return std::make_shared<Value>(NandGate::create(*a, *b));
+Circuit::Wire::~Wire() {
+    if (auto circuit = c.lock()) {
+        circuit->unreg(this);
+    }
 }
 
-std::shared_ptr<Value> Or(std::shared_ptr<Value> a, std::shared_ptr<Value> b) {
-    return std::make_shared<Value>(OrGate::create(*a, *b));
+std::shared_ptr<Circuit::Value> And(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(AndGate::create(*a, *b));
 }
 
-std::shared_ptr<Value> Nor(std::shared_ptr<Value> a, std::shared_ptr<Value> b) {
-    return std::make_shared<Value>(NorGate::create(*a, *b));
+std::shared_ptr<Circuit::Value> Nand(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(NandGate::create(*a, *b));
 }
 
-std::shared_ptr<Value> Xor(std::shared_ptr<Value> a, std::shared_ptr<Value> b) {
-    return std::make_shared<Value>(XorGate::create(*a, *b));
+std::shared_ptr<Circuit::Value> Or(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(OrGate::create(*a, *b));
 }
 
-std::shared_ptr<Value> Nxor(std::shared_ptr<Value> a, std::shared_ptr<Value> b) {
-    return std::make_shared<Value>(NxorGate::create(*a, *b));
+std::shared_ptr<Circuit::Value> Nor(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(NorGate::create(*a, *b));
 }
 
-std::shared_ptr<Value> Not(std::shared_ptr<Value> a) {
-    return std::make_shared<Value>(NotGate::create(*a));
+std::shared_ptr<Circuit::Value> Xor(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(XorGate::create(*a, *b));
+}
+
+std::shared_ptr<Circuit::Value> Nxor(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(NxorGate::create(*a, *b));
+}
+
+std::shared_ptr<Circuit::Value> Not(std::shared_ptr<Circuit::Value> a) {
+    return std::make_shared<Circuit::Value>(NotGate::create(*a));
 }
 

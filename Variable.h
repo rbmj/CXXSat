@@ -1,15 +1,14 @@
 #ifndef VARIABLE_H_INC
 #define VARIABLE_H_INC
 
+#include "Circuit.h"
 #include "Argument.h"
 #include "Range.h"
 #include <array>
 #include <memory>
 #include <vector>
 
-class Value;
-
-typedef std::vector<std::shared_ptr<Value>> BitVector;
+typedef std::vector<std::shared_ptr<Circuit::Value>> BitVector;
 
 class Variable {
 private:
@@ -30,7 +29,7 @@ public:
 
 class BitVar : public Variable {
 private:
-    BitVar(std::shared_ptr<Value>);
+    BitVar(std::shared_ptr<Circuit::Value>);
 public:
     BitVar(const BitArgument& arg);
     BitVar(const BitVar& v);

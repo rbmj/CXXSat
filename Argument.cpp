@@ -2,8 +2,8 @@
 #include "Circuit.h"
 #include "Variable.h"
 
-BitArgument::BitArgument(const std::weak_ptr<Circuit>& c) : Argument() {
-    getInputs().push_back(Input::create(c));
+BitArgument::BitArgument(const std::weak_ptr<Circuit::impl>& c) : Argument() {
+    getInputs().push_back(Circuit::Input::create(c));
 }
 
 BitVar BitArgument::asValue() const {
