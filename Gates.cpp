@@ -5,63 +5,63 @@
 void NotGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{-A, -C});
-    p.emplace_back(CLAUSE{A, C});
+    p.addClause({-A, -C});
+    p.addClause({A, C});
 }
 
 void AndGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{-A, -B, C});
-    p.emplace_back(CLAUSE{A, -C});
-    p.emplace_back(CLAUSE{B, -C});
+    p.addClause({-A, -B, C});
+    p.addClause({A, -C});
+    p.addClause({B, -C});
 }
 
 void NandGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{-A, -B, -C});
-    p.emplace_back(CLAUSE{A, C});
-    p.emplace_back(CLAUSE{B, C});
+    p.addClause({-A, -B, -C});
+    p.addClause({A, C});
+    p.addClause({B, C});
 }
 
 void OrGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{A, B, -C});
-    p.emplace_back(CLAUSE{-A, C});
-    p.emplace_back(CLAUSE{-B, C});
+    p.addClause({A, B, -C});
+    p.addClause({-A, C});
+    p.addClause({-B, C});
 }
 
 void NorGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{A, B, C});
-    p.emplace_back(CLAUSE{-A, -C});
-    p.emplace_back(CLAUSE{-B, -C});
+    p.addClause({A, B, C});
+    p.addClause({-A, -C});
+    p.addClause({-B, -C});
 }
 
 void XorGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{-A, -B, -C});
-    p.emplace_back(CLAUSE{A, B, -C});
-    p.emplace_back(CLAUSE{A, -B, C});
-    p.emplace_back(CLAUSE{-A, B, C});
+    p.addClause({-A, -B, -C});
+    p.addClause({A, B, -C});
+    p.addClause({A, -B, C});
+    p.addClause({-A, B, C});
 }
 
 void NxorGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
-    p.emplace_back(CLAUSE{-A, -B, C});
-    p.emplace_back(CLAUSE{A, B, C});
-    p.emplace_back(CLAUSE{A, -B, -C});
-    p.emplace_back(CLAUSE{-A, B, -C});
+    p.addClause({-A, -B, C});
+    p.addClause({A, B, C});
+    p.addClause({A, -B, -C});
+    p.addClause({-A, B, -C});
 }
 

@@ -17,6 +17,6 @@ int main() {
     std::cout << "x2: " << x2_arg->getID() << '\n';
     std::cout << "x3: " << x3_arg->getID() << '\n';
     std::cout << "y: " << y.getID() << '\n';
-    printDIMACS(c.generateCNF());
+    c.generateCNF().printDIMACS(std::cout);
     return 0;
 }
