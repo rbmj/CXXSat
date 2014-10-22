@@ -25,6 +25,7 @@ public:
     const_iterator begin() const;
     iterator end();
     const_iterator end() const;
+    void solve() const;
 };
 
 #endif

@@ -2,6 +2,7 @@
 #include "Circuit.h"
 #include "Argument.h"
 #include "Variable.h"
+#include "Sat.h"
 
 int main() {
     auto c = Circuit();
@@ -17,6 +18,9 @@ int main() {
     std::cout << "x2: " << x2_arg->getID() << '\n';
     std::cout << "x3: " << x3_arg->getID() << '\n';
     std::cout << "y: " << y.getID() << '\n';
-    c.generateCNF().printDIMACS(std::cout);
+    auto p = c.generateCNF();
+    p.addClause({y.getID()});
+    p.printDIMACS(std::cout);
+    p.solve();
     return 0;
 }

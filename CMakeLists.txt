@@ -9,7 +9,8 @@ add_executable(CircuitTest CircuitTest.cpp Circuit.cpp Variable.cpp Argument.cpp
 
 set(CMAKE_CXX_FLAGS "-g -std=c++11")
 
+target_link_libraries(CircuitTest minisat)
 target_link_libraries(gen clangFrontend clangSerialization clangDriver clangTooling clangParse clangSema clangStaticAnalyzerFrontend clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangAnalysis clangRewriteFrontend clangRewriteCore clangEdit clangAST clangLex clangBasic llvm LLVM-3.5)
 
-add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS)
+add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS)
 
