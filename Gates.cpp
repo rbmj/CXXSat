@@ -55,7 +55,7 @@ void XorGate::emplaceCNF(Problem& p) {
     p.addClause({-A, B, C});
 }
 
-void NxorGate::emplaceCNF(Problem& p) {
+void XnorGate::emplaceCNF(Problem& p) {
     auto A = a->ID();
     auto B = b->ID();
     auto C = getWire()->ID();
@@ -65,3 +65,26 @@ void NxorGate::emplaceCNF(Problem& p) {
     p.addClause({-A, B, -C});
 }
 
+void MultiAndGate::emplaceCNF(Problem& p) {
+    auto out = getWire()->ID();
+    Clause c;
+    for (auto& i : inputs) {
+        auto x = i->ID();
+        p.addClause({x, -out});
+        c.push_back(-x);
+    }
+    c.push_back(out);
+    p.addClause(c);
+}
+
+void MultiOrGate::emplaceCNF(Problem& p) {
+    auto out = getWire()->ID();
+    Clause c;
+    for (auto& i : inputs) {
+        auto x = i->ID();
+        p.addClause({-x, out});
+        c.push_back(x);
+    }
+    c.push_back(-out);
+    p.addClause(c);
+}

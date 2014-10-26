@@ -145,11 +145,19 @@ std::shared_ptr<Circuit::Value> Xor(std::shared_ptr<Circuit::Value> a, std::shar
     return std::make_shared<Circuit::Value>(XorGate::create(*a, *b));
 }
 
-std::shared_ptr<Circuit::Value> Nxor(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
-    return std::make_shared<Circuit::Value>(NxorGate::create(*a, *b));
+std::shared_ptr<Circuit::Value> Xnor(std::shared_ptr<Circuit::Value> a, std::shared_ptr<Circuit::Value> b) {
+    return std::make_shared<Circuit::Value>(XnorGate::create(*a, *b));
 }
 
 std::shared_ptr<Circuit::Value> Not(std::shared_ptr<Circuit::Value> a) {
     return std::make_shared<Circuit::Value>(NotGate::create(*a));
+}
+
+std::shared_ptr<Circuit::Value> MultiAnd(const std::vector<std::shared_ptr<Circuit::Value>>& values) {
+    return std::make_shared<Circuit::Value>(MultiAndGate::create(values));
+}
+
+std::shared_ptr<Circuit::Value> MultiOr(const std::vector<std::shared_ptr<Circuit::Value>>& values) {
+    return std::make_shared<Circuit::Value>(MultiOrGate::create(values));
 }
 

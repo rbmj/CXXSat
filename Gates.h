@@ -58,9 +58,24 @@ public:
         a->connect(this);
         b->connect(this);
     }
+    BinaryGate(std::shared_ptr<Circuit::Wire> _a, std::shared_ptr<Circuit::Wire> _b)
+        : Circuit::GateBase<DerivedGate>(_a->getCircuit()),
+          a(std::move(_a)), b(std::move(_b))
+    {
+        a->connect(this);
+        b->connect(this);
+    }
     virtual ~BinaryGate() {
         a->disconnect(this);
         b->disconnect(this);
+    }
+    template <class OtherGate>
+    typename std::enable_if<std::is_base_of<BinaryGate, OtherGate>::value>::type
+    /* void */ replaceWith() {
+        auto out = this->out_wire.lock();
+        assert(out);
+        auto new_gate = std::make_shared<OtherGate>(a, b);
+        out.swapSource(new_gate);
     }
 };
 
@@ -76,9 +91,59 @@ DECLARE_BINARY_GATE(NandGate);
 DECLARE_BINARY_GATE(OrGate);
 DECLARE_BINARY_GATE(NorGate);
 DECLARE_BINARY_GATE(XorGate);
-DECLARE_BINARY_GATE(NxorGate);
+DECLARE_BINARY_GATE(XnorGate);
 
 #undef DECLARE_BINARY_GATE
+
+template <class DerivedGate>
+class MultiGate : public Circuit::GateBase<DerivedGate> {
+public:
+    /* commented due to not needing right now, and compile error
+     * with init-list::iterator defined as pointer to reference...
+    template <class... Args>
+    MultiGate(const Circuit::Value& _a, Args&&... args) 
+        : Circuit::GateBase<DerivedGate>(_a.getCircuit())
+    {
+        std::initializer_list<const Circuit::Value&> values{_a, args...};
+        std::transform(begin(values), end(values), std::inserter(inputs, begin(inputs)),
+                [](const Circuit::Value& c) { return c.source(); });
+        for (auto& i : inputs) {
+            i->connect(this);
+        }
+    }
+    */
+    MultiGate(const std::vector<std::shared_ptr<Circuit::Value>>& args)
+        : Circuit::GateBase<DerivedGate>(args.at(0)->getCircuit())
+    {
+        std::transform(begin(args), end(args), std::inserter(inputs, begin(inputs)),
+            [](const std::shared_ptr<Circuit::Value>& v) {
+                return v->source();
+            }
+        );
+        for (auto& i : inputs) {
+            i->connect(this);
+        }
+    }
+    ~MultiGate() {
+        for (auto& i : inputs) {
+            i->disconnect(this);
+        }
+    }
+protected:
+    std::vector<std::shared_ptr<Circuit::Wire>> inputs;
+};
+
+#define DECLARE_MULTI_GATE(name) \
+    class name : public MultiGate<name> { \
+    public: \
+        void emplaceCNF(Problem& p); \
+        using MultiGate<name>::MultiGate; \
+    }
+
+DECLARE_MULTI_GATE(MultiAndGate);
+DECLARE_MULTI_GATE(MultiOrGate);
+
+#undef DECLARE_MULTI_GATE
 
 #endif
 

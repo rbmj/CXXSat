@@ -121,6 +121,9 @@ public:
     const std::weak_ptr<Circuit::impl>& getCircuit() {
         return c;
     }
+    void swapSource(std::shared_ptr<Node>& p) {
+        std::swap(from, p);
+    }
 private:
     std::shared_ptr<Node> from;
     std::vector<Node*> to;
@@ -223,6 +226,7 @@ private:
     void init(std::weak_ptr<Wire> w) {
         out_wire = w;
     }
+protected:
     std::weak_ptr<Wire> out_wire;
 };
 
@@ -233,7 +237,9 @@ std::shared_ptr<Circuit::Value> Nand(std::shared_ptr<Circuit::Value>, std::share
 std::shared_ptr<Circuit::Value> Or(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
 std::shared_ptr<Circuit::Value> Nor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
 std::shared_ptr<Circuit::Value> Xor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Nxor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
+std::shared_ptr<Circuit::Value> Xnor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
 std::shared_ptr<Circuit::Value> Not(std::shared_ptr<Circuit::Value>);
+std::shared_ptr<Circuit::Value> MultiAnd(const std::vector<std::shared_ptr<Circuit::Value>>&);
+std::shared_ptr<Circuit::Value> MultiOr(const std::vector<std::shared_ptr<Circuit::Value>>&);
 
 #endif
