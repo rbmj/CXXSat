@@ -36,6 +36,14 @@ BitVar::BitVar(std::shared_ptr<Circuit::Value> v) {
     getBits().push_back(std::move(v));
 }
 
+BitVar::BitVar(bool b, const Circuit& c) {
+    getBits().push_back(b ? c.getLiteralTrue() : c.getLiteralFalse());
+}
+
+value_ptr BitVar::getBit() const {
+    return getBits().at(0);
+}
+
 BitVar& BitVar::operator=(const BitVar& v) {
     getBits().at(0) = v.getBits().at(0)->clone();
     return *this;

@@ -3,6 +3,8 @@
 
 #include "Circuit.h"
 #include "Range.h"
+#include "IntegerTypes.h"
+
 #include <array>
 #include <memory>
 #include <vector>
@@ -51,6 +53,9 @@ protected:
         return getTypeID_();
     }
 public:
+    std::shared_ptr<Derived> clone_shared() const {
+        return std::make_shared<Derived>(*(Derived*)this);
+    }
     BitVar operator==(const Variable& v) const;
     virtual BitVar operator==(const Derived& d) const = 0;
 };
@@ -61,6 +66,8 @@ public:
     BitVar(const BitArgument& arg);
     BitVar(const BitVar& v);
     BitVar(value_ptr);
+    BitVar(bool, const Circuit&);
+    value_ptr getBit() const;
     static BitVar Not(BitVar);
     static BitVar And(const BitVar&, const BitVar&);
     static BitVar Nand(const BitVar&, const BitVar&);
@@ -105,10 +112,12 @@ class IntArg;
 template <bool Signed, unsigned N>
 class IntVar : public Variable::Base<IntVar<Signed, N>> {
 public:
+    typedef IntegerType<Signed, N> int_type;
     typedef IntVar<Signed, N> this_t;
     typedef IntArg<Signed, N> arg_t;
     IntVar(const arg_t&);
     IntVar(const this_t&);
+    IntVar(int_type, const Circuit&);
     static this_t Not(const this_t&);
     static this_t And(const this_t&, const this_t&);
     static this_t Nand(const this_t&, const this_t&);
@@ -168,6 +177,15 @@ IntVar<Signed, N>::IntVar(const this_t& var) {
             [](const value_ptr& v) {
                 return v->clone();
             });
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N>::IntVar(int_type t, const Circuit& c) {
+    for (unsigned i = 0; i < N; ++i) {
+        this->getBits().push_back((t >> i) & 1 ?
+                c.getLiteralTrue() :
+                c.getLiteralFalse());
+    }
 }
 
 template <bool Signed, unsigned N>

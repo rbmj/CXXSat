@@ -4,9 +4,12 @@
 #include <vector>
 #include <string>
 #include <ostream>
+#include <unordered_map>
+#include <memory>
 
 typedef std::vector<int> Clause;
 typedef std::initializer_list<int> Clause_list;
+class Solution;
 
 class Problem {
 private:
@@ -25,7 +28,26 @@ public:
     const_iterator begin() const;
     iterator end();
     const_iterator end() const;
-    void solve() const;
+    Solution solve() const;
+};
+
+class Solution {
+    friend class Problem;
+private:
+    typedef std::unordered_map<int, bool> varmap_t;
+    std::unique_ptr<varmap_t> varmap;
+    Solution(std::unique_ptr<varmap_t>&& a) : varmap(std::move(a)) {}
+    Solution() = default;
+public:
+    bool operator[](int i) const {
+        return (*varmap)[i];
+    }
+    bool at(int i) const {
+        return varmap->at(i);
+    }
+    explicit operator bool() const {
+        return (bool)varmap;
+    }
 };
 
 #endif

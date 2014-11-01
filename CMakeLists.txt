@@ -7,7 +7,7 @@ link_directories(/usr/lib/llvm-3.5/lib)
 add_executable(gen gen.cpp)
 add_executable(CircuitTest CircuitTest.cpp Circuit.cpp Variable.cpp Argument.cpp Sat.cpp Gates.cpp)
 
-set(CMAKE_CXX_FLAGS "-g -std=c++11")
+set(CMAKE_CXX_FLAGS "-g -std=c++14")
 
 target_link_libraries(CircuitTest minisat)
 target_link_libraries(gen clangFrontend clangSerialization clangDriver clangTooling clangParse clangSema clangStaticAnalyzerFrontend clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangAnalysis clangRewriteFrontend clangRewriteCore clangEdit clangAST clangLex clangBasic llvm LLVM-3.5)

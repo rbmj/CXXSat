@@ -3,7 +3,6 @@
 
 #include <iostream>
 
-
 #include <vector>
 #include <memory>
 #include <utility>
@@ -23,6 +22,7 @@
 
 class Argument;
 class Variable;
+class BitVar;
 
 class Circuit {
 public:
@@ -40,24 +40,22 @@ public:
 private:
     //needs to be a shared_ptr in order to use weak_ptr<> (sad face)
     std::shared_ptr<impl> pimpl;
-    void pimpl_emplace_argument(std::string, std::shared_ptr<Argument>);
+    void pimpl_emplace_argument(std::shared_ptr<Argument>);
     const std::weak_ptr<impl>& pimpl_get_self() const;
 public:
     Circuit();
     template <class T, class... Args>
-    std::shared_ptr<T> addArgument(const std::string& s, Args&&... args) {
+    std::shared_ptr<T> addArgument(Args&&... args) {
         auto ptr = std::make_shared<T>(
                 pimpl_get_self(), std::forward<Args>(args)...);
-        pimpl_emplace_argument(std::move(s), ptr);
+        pimpl_emplace_argument(ptr);
         return ptr;
     }
-    /*
-    template <class T, class U>
-    const T& getLiteral(U u) {
-        return T::getLiteral(u, lit0, lit1);
-    }
-    */
+    std::shared_ptr<Value> getLiteralTrue() const;
+    std::shared_ptr<Value> getLiteralFalse() const;
+    void yield(const std::shared_ptr<Variable>&, std::vector<BitVar>&&);
     void yield(const std::shared_ptr<Variable>& v);
+    void constrain_equal(const std::shared_ptr<Variable>& v);
     void number();
     Problem generateCNF() const;
 };
@@ -139,7 +137,7 @@ public:
         return ptr;
     }
     bool referenced() const {
-        return !(out_wire.expired());
+        return initialized && !(out_wire.expired());
     }
     std::shared_ptr<Wire> getWire() const {
         if (auto wire = out_wire.lock()) {
@@ -150,6 +148,7 @@ public:
             assert(ptr);
             auto ret = std::make_shared<Wire>(ptr);
             out_wire = ret;
+            initialized = true;
             return ret;
         }
     }
@@ -157,9 +156,10 @@ public:
         return getWire()->ID();
     }
     //DO NOT USE
-    explicit Input(std::weak_ptr<Circuit::impl> c) : Node(c, NODE_TYPE::INPUT) {}
+    explicit Input(std::weak_ptr<Circuit::impl> c) : Node(c, NODE_TYPE::INPUT), initialized(false) {}
 private:
     mutable std::weak_ptr<Wire> out_wire;
+    mutable bool initialized;
     std::weak_ptr<Node> self;
 };
 

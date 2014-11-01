@@ -4,8 +4,11 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <ostream>
 
+#include "Sat.h"
 #include "Circuit.h"
+#include "IntegerTypes.h"
 
 typedef std::vector<std::shared_ptr<Circuit::Input>> InputVec;
 
@@ -22,18 +25,18 @@ public:
     template <class... Args>
     Argument(Args&&... args) : inputs(std::forward<Args>(args)...) {}
     virtual ~Argument() {}
-    virtual std::string sprint() = 0;
+    virtual void print(std::ostream&, const Solution&) const = 0;
+    std::string toString(const Solution&) const;
 };
 
 class BitVar;
 class BitArgument : public Argument {
 public:
     BitArgument(const std::weak_ptr<Circuit::impl>& c);
-    std::string sprint() {
-        return "IMPLEMENT";
-    }
     BitVar asValue() const;
     int getID() const;
+    bool solution(const Solution&) const;
+    void print(std::ostream&, const Solution&) const;
 };
 
 template <bool Signed, unsigned N>
@@ -42,15 +45,15 @@ class IntVar;
 template <bool Signed, unsigned N>
 class IntArg : public Argument {
 public:
+    typedef IntegerType<Signed, N> int_type;
     IntArg(const std::weak_ptr<Circuit::impl>& c) : Argument() {
         auto& i = getInputs();
         std::generate_n(std::inserter(i, begin(i)), N,
                 [&c]() { return Circuit::Input::create(c); });
     }
-    std::string sprint() {
-        return "IMPLEMENT";
-    }
     IntVar<Signed, N> asValue() const;
+    int_type solution(const Solution&) const;
+    void print(std::ostream&, const Solution&) const;
 };
 
 #include "Variable.h"
@@ -58,6 +61,25 @@ public:
 template <bool Signed, unsigned N>
 IntVar<Signed, N> IntArg<Signed, N>::asValue() const {
     return IntVar<Signed, N>(*this);
+}
+
+template <bool Signed, unsigned N>
+IntegerType<Signed, N> IntArg<Signed, N>::solution(
+        const Solution& s) const 
+{
+    int_type t = 0;
+    auto& inputs = getInputs();
+    for (unsigned i = 0; i < N; ++i) {
+        if (s.at(inputs[i]->getID())) {
+            t |= 1 << i;
+        }
+    }
+    return t;
+}
+
+template <bool Signed, unsigned N>
+void IntArg<Signed, N>::print(std::ostream& o, const Solution& s) const {
+    o << solution(s);
 }
 
 extern template class IntArg<true, 8>;
