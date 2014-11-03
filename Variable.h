@@ -252,13 +252,31 @@ extern template class IntVar<false, 32>;
 extern template class IntVar<true, 64>;
 extern template class IntVar<false, 64>;
 
-typedef IntVar<true, 8> UIntVar8;
-typedef IntVar<false, 8> IntVar8;
-typedef IntVar<true, 16> UIntVar16;
-typedef IntVar<false, 16> IntVar16;
-typedef IntVar<true, 32> UIntVar32;
-typedef IntVar<false, 32> IntVar32;
-typedef IntVar<true, 64> UIntVar64;
-typedef IntVar<false, 64> IntVar64;
+typedef IntVar<true, 8> IntVar8;
+typedef IntVar<false, 8> UIntVar8;
+typedef IntVar<true, 16> IntVar16;
+typedef IntVar<false, 16> UIntVar16;
+typedef IntVar<true, 32> IntVar32;
+typedef IntVar<false, 32> UIntVar32;
+typedef IntVar<true, 64> IntVar64;
+typedef IntVar<false, 64> UIntVar64;
 
+/*
+template <class T, std::true_type = true>
+struct VarTypeMap_t {};
+
+template <>
+struct VarTypeMap_t<bool, true> {
+    typedef BitVar type;
+};
+
+template <class T>
+struct VarTypeMap_t<T, typename std::is_integral<T>::type> {
+    typedef typename IntVar<std::is_signed<T>::value, sizeof(T)*8>::type type;
+};
+
+template <class T>
+using VarTypeMap = typename VarTypeMap_t<T>::type;
+
+*/
 #endif

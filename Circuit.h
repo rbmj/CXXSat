@@ -24,6 +24,9 @@ class Argument;
 class Variable;
 class BitVar;
 
+template <bool, unsigned>
+class IntVar;
+
 class Circuit {
 public:
     class Node;
@@ -42,6 +45,7 @@ private:
     std::shared_ptr<impl> pimpl;
     void pimpl_emplace_argument(std::shared_ptr<Argument>);
     const std::weak_ptr<impl>& pimpl_get_self() const;
+    void number() const;
 public:
     Circuit();
     template <class T, class... Args>
@@ -56,7 +60,11 @@ public:
     void yield(const std::shared_ptr<Variable>&, std::vector<BitVar>&&);
     void yield(const std::shared_ptr<Variable>& v);
     void constrain_equal(const std::shared_ptr<Variable>& v);
-    void number();
+    void constrain_equal(bool);
+    template <class T>
+    void constrain_equal(typename T::int_type t) {
+        constrain_equal(std::make_shared<T>(t, *this));
+    }
     Problem generateCNF() const;
 };
 

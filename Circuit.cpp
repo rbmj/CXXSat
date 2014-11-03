@@ -63,7 +63,7 @@ void Circuit::yield(const std::shared_ptr<Variable>& v, std::vector<BitVar>&& co
     pimpl->return_values.push_back({v, std::move(conds)});
 }
 
-void Circuit::number() {
+void Circuit::number() const {
     int i = 0;
     for (auto& wire : pimpl->wires) {
         wire->id = ++i;
@@ -98,7 +98,12 @@ void Circuit::constrain_equal(const std::shared_ptr<Variable>& v) {
     }
 }
 
+void Circuit::constrain_equal(bool b) {
+    constrain_equal(std::make_shared<BitVar>(b, *this));
+}
+
 Problem Circuit::generateCNF() const {
+    number();
     Problem p;
     for (auto& gate : pimpl->gates) {
         gate->emplaceCNF(p);

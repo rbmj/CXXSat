@@ -14,15 +14,15 @@ int main() {
     auto x3 = x3_arg->asValue();
     auto y = (!x1 & x2) | (x1 & !x2) | (!x2 & x3);
     c.yield(y.clone_shared());
-    c.constrain_equal(std::make_shared<BitVar>(true, c));
-    c.number();
+    c.constrain_equal(true);
+    /*
     std::cout << "x1: " << x1_arg->getID() << '\n';
     std::cout << "x2: " << x2_arg->getID() << '\n';
     std::cout << "x3: " << x3_arg->getID() << '\n';
     std::cout << "y: " << y.getID() << '\n';
+    */
     auto p = c.generateCNF();
-    //p.addClause({y.getID()});
-    p.printDIMACS(std::cout);
+    //p.printDIMACS(std::cout);
     auto soln = p.solve();
     if (soln) {
         std::cout << "SAT\n";

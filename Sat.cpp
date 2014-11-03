@@ -52,11 +52,8 @@ Solution Problem::solve() const {
         s.addClause(lits);
         lits.clear();
     }
-    if (!s.simplify()) {
-        std::cout << "UNSAT\n";
-    }
     //perhaps use solveLimited here for resource constraints later
-    if (s.solve()) {
+    if (s.simplify() && s.solve()) {
         auto solution = std::make_unique<std::unordered_map<int, bool>>();
         for (int i = 0; i < s.nVars(); ++i) {
             if (s.model[i] != Minisat::l_Undef) {
