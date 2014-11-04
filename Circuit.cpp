@@ -75,7 +75,7 @@ void Circuit::yield(const std::shared_ptr<Variable>& v) {
 }
 
 BitVar Circuit::getLiteral(bool b) const {
-    return BitVar(b, *this);
+    return BitVar(b, pimpl_get_self());
 }
 
 void Circuit::constrain_equal(const std::shared_ptr<Variable>& v) {
@@ -104,7 +104,7 @@ void Circuit::constrain_equal(const std::shared_ptr<Variable>& v) {
 }
 
 void Circuit::constrain_equal(bool b) {
-    constrain_equal(std::make_shared<BitVar>(b, *this));
+    constrain_equal(std::make_shared<BitVar>(b, pimpl_get_self()));
 }
 
 Problem Circuit::generateCNF() const {
@@ -123,6 +123,18 @@ Problem Circuit::generateCNF() const {
         p.addClause({pimpl->final_output->getID()});
     }
     return std::move(p);
+}
+    
+std::shared_ptr<Circuit::Value> Circuit::getLiteralTrue(const std::weak_ptr<Circuit::impl>& c) {
+    auto pimpl = c.lock();
+    assert(pimpl);
+    return std::make_shared<Value>(*(pimpl->lit1));
+}
+
+std::shared_ptr<Circuit::Value> Circuit::getLiteralFalse(const std::weak_ptr<Circuit::impl>& c) {
+    auto pimpl = c.lock();
+    assert(pimpl);
+    return std::make_shared<Value>(*(pimpl->lit0));
 }
 
 std::shared_ptr<Circuit::Value> Circuit::getLiteralTrue() const {
@@ -223,5 +235,17 @@ std::shared_ptr<Circuit::Value> MultiAnd(const std::vector<std::shared_ptr<Circu
 std::shared_ptr<Circuit::Value> MultiOr(const std::vector<std::shared_ptr<Circuit::Value>>& values) {
     assert(values.size() != 0);
     return std::make_shared<Circuit::Value>(MultiOrGate::create(values));
+}
+
+AdderResT FullAdder(
+        std::shared_ptr<Circuit::Value> a,
+        std::shared_ptr<Circuit::Value> b,
+        std::shared_ptr<Circuit::Value> carry)
+{
+    auto half_sum = Xor(a, b);
+    return {
+        Xor(half_sum, carry),
+        Or(And(a, b), And(half_sum, carry))
+    };
 }
 

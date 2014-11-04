@@ -24,20 +24,20 @@ BitVar Variable::Base<Derived>::operator==(const Variable& v) const {
     return *this == (const Derived&)v;
 }
 
-BitVar::BitVar(const BitArgument& arg) {
+BitVar::BitVar(const BitArgument& arg) : Variable::Base<BitVar>(arg.getCircuit()) {
     getBits().push_back(Circuit::Value::create(arg.getInputs().at(0)));
 }
 
-BitVar::BitVar(const BitVar& v) {
+BitVar::BitVar(const BitVar& v) : Variable::Base<BitVar>(v.getCircuit()) {
     getBits().push_back(v.getBits().at(0)->clone());
 }
 
-BitVar::BitVar(std::shared_ptr<Circuit::Value> v) {
+BitVar::BitVar(std::shared_ptr<Circuit::Value> v) : Variable::Base<BitVar>(v->getCircuit()) {
     getBits().push_back(std::move(v));
 }
 
-BitVar::BitVar(bool b, const Circuit& c) {
-    getBits().push_back(b ? c.getLiteralTrue() : c.getLiteralFalse());
+BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Variable::Base<BitVar>(c) {
+    getBits().push_back(b ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c));
 }
 
 value_ptr BitVar::getBit() const {
@@ -45,6 +45,7 @@ value_ptr BitVar::getBit() const {
 }
 
 BitVar& BitVar::operator=(const BitVar& v) {
+    //TODO:  Assert circuits equal
     getBits().at(0) = v.getBits().at(0)->clone();
     return *this;
 }

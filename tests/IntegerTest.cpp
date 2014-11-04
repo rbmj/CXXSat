@@ -9,7 +9,7 @@ int main() {
     auto arg = c.addArgument<UIntArg32>();
     auto x = arg->asValue();
     auto key = c.getLiteral<UIntVar32>(0x12345678);
-    auto y = x ^ key;
+    auto y = x - key;
     c.yield(y);
     c.constrain_equal<UIntVar32>(0x41414141);
     auto p = c.generateCNF();

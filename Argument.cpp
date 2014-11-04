@@ -20,7 +20,7 @@ std::string Argument::toString(const Solution& s) const {
     return ss.str();
 }
 
-BitArgument::BitArgument(const std::weak_ptr<Circuit::impl>& c) : Argument() {
+BitArgument::BitArgument(const std::weak_ptr<Circuit::impl>& c) : Argument(c) {
     getInputs().push_back(Circuit::Input::create(c));
 }
 

@@ -18,6 +18,7 @@ class BitVar;
 class Variable {
 private:
     BitVector bits;
+    std::weak_ptr<Circuit::impl> circuit;
     static int class_id;
 protected:
     virtual int getTypeID() const = 0;
@@ -29,8 +30,12 @@ public:
     Variable(const Variable&) = default;
     Variable(Variable&&) = default;
     template <class... Args>
-    Variable(Args&&... args) : bits(std::forward<Args>(args)...) {}
+    Variable(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
+        circuit(c), bits(std::forward<Args>(args)...) {}
     virtual ~Variable() {}
+    const std::weak_ptr<Circuit::impl>& getCircuit() const {
+        return circuit;
+    }
     BitVector& getBits() {
         return bits;
     }
@@ -53,6 +58,7 @@ protected:
         return getTypeID_();
     }
 public:
+    using Variable::Variable;
     std::shared_ptr<Derived> clone_shared() const {
         return std::make_shared<Derived>(*(Derived*)this);
     }
@@ -65,8 +71,8 @@ class BitVar : public Variable::Base<BitVar> {
 public:
     BitVar(const BitArgument& arg);
     BitVar(const BitVar& v);
-    BitVar(value_ptr);
-    BitVar(bool, const Circuit&);
+    explicit BitVar(value_ptr);
+    BitVar(bool, const std::weak_ptr<Circuit::impl>&);
     value_ptr getBit() const;
     static BitVar Not(BitVar);
     static BitVar And(const BitVar&, const BitVar&);
@@ -77,6 +83,9 @@ public:
     static BitVar Xnor(const BitVar&, const BitVar&);
     BitVar& operator=(const BitVar& b);
     BitVar operator!() const {
+        return Not(*this);
+    }
+    BitVar operator~() const {
         return Not(*this);
     }
     BitVar& operator&=(const BitVar& v) {
@@ -117,7 +126,7 @@ public:
     typedef IntArg<Signed, N> arg_t;
     IntVar(const arg_t&);
     IntVar(const this_t&);
-    IntVar(int_type, const Circuit&);
+    IntVar(int_type, const std::weak_ptr<Circuit::impl>&);
     static this_t Not(const this_t&);
     static this_t And(const this_t&, const this_t&);
     static this_t Nand(const this_t&, const this_t&);
@@ -125,6 +134,8 @@ public:
     static this_t Nor(const this_t&, const this_t&);
     static this_t Xor(const this_t&, const this_t&);
     static this_t Xnor(const this_t&, const this_t&);
+    static this_t Add(const this_t&, const this_t&);
+    static this_t Sub(const this_t&, const this_t&);
     this_t& operator=(const this_t& b);
     this_t operator~() const {
         return Not(*this);
@@ -138,6 +149,12 @@ public:
     this_t& operator^=(const this_t& v) {
         return *this = *this ^ v;
     }
+    this_t& operator+=(const this_t& v) {
+        return *this = *this + v;
+    }
+    this_t& operator-=(const this_t& v) {
+        return *this = *this - v;
+    }
     this_t operator&(const this_t& v) const {
         return And(*this, v);
     }
@@ -147,20 +164,29 @@ public:
     this_t operator^(const this_t& v) const {
         return Xor(*this, v);
     }
+    this_t operator+(const this_t& v) const {
+        return Add(*this, v);
+    }
+    this_t operator-(const this_t& v) const {
+        return Sub(*this, v);
+    }
     BitVar operator==(const this_t& v) const {
         const auto& i = Xnor(*this, v);
         return BitVar(MultiAnd(i.getBits()));
     }
 private:
-    IntVar() {}
+    template <class... Args>
+    explicit IntVar(const std::weak_ptr<Circuit::impl>& c, Args&&... args) 
+        : Variable::Base<this_t>(c, std::forward<Args>(args)...) {}
     template <class Op>
     void binary_transform(const this_t&, const this_t&, Op);
+    static this_t do_addition(const this_t&, const this_t&, bool carry);
 };
 
 #include "Argument.h"
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const arg_t& arg) {
+IntVar<Signed, N>::IntVar(const arg_t& arg) : Variable::Base<this_t>(arg.getCircuit()) {
     const auto& i = arg.getInputs();
     auto& b = this->getBits();
     std::transform(begin(i), end(i), std::inserter(b, begin(b)),
@@ -170,7 +196,7 @@ IntVar<Signed, N>::IntVar(const arg_t& arg) {
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const this_t& var) {
+IntVar<Signed, N>::IntVar(const this_t& var) : Variable::Base<this_t>(var.getCircuit()) {
     const auto& b_other = var.getBits();
     auto& b = this->getBits();
     std::transform(begin(b_other), end(b_other), std::inserter(b, begin(b)),
@@ -180,16 +206,17 @@ IntVar<Signed, N>::IntVar(const this_t& var) {
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(int_type t, const Circuit& c) {
+IntVar<Signed, N>::IntVar(int_type t, const std::weak_ptr<Circuit::impl>& c) : Variable::Base<this_t>(c) {
     for (unsigned i = 0; i < N; ++i) {
         this->getBits().push_back((t >> i) & 1 ?
-                c.getLiteralTrue() :
-                c.getLiteralFalse());
+                Circuit::getLiteralTrue(c) :
+                Circuit::getLiteralFalse(c));
     }
 }
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N>& IntVar<Signed, N>::operator=(const this_t& other) {
+    //TODO:  Assert circuits equal for all these
     const auto& b_other = other.getBits();
     auto& b = this->getBits();
     b.clear();
@@ -202,7 +229,7 @@ IntVar<Signed, N>& IntVar<Signed, N>::operator=(const this_t& other) {
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N> IntVar<Signed, N>::Not(const this_t& a) {
-    this_t x;
+    this_t x(a.getCircuit());
     auto& bits = x.getBits();
     const auto& otherbits = a.getBits();
     std::transform(begin(otherbits), end(otherbits), std::inserter(bits, begin(bits)),
@@ -227,7 +254,7 @@ void IntVar<Signed, N>::binary_transform(const this_t& a, const this_t& b, Op op
 #define DEFINE_BINARY_OP(name) \
     template <bool Signed, unsigned N> \
     IntVar<Signed, N> IntVar<Signed, N>::name(const this_t& a, const this_t& b) { \
-        this_t x; \
+        this_t x(a.getCircuit()); \
         x.binary_transform(a, b, [](const value_ptr& y, const value_ptr& z) { \
             return ::name(y, z); \
         }); \
@@ -242,6 +269,30 @@ DEFINE_BINARY_OP(Xor);
 DEFINE_BINARY_OP(Xnor);
 
 #undef DEFINE_BINARY_OP
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Add(const this_t& a, const this_t& b) {
+    return do_addition(a, b, false);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Sub(const this_t& a, const this_t& b) {
+    return do_addition(a, Not(b), true);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& b, bool c) {
+    auto carry = c ? Circuit::getLiteralTrue(a.getCircuit()) 
+        : Circuit::getLiteralFalse(a.getCircuit());
+    this_t ret(a.getCircuit(), N);
+    auto& x = a.getBits();
+    auto& y = b.getBits();
+    auto& z = ret.getBits();
+    for (unsigned i = 0; i < N; ++i) {
+        std::tie(z[i], carry) = FullAdder(x[i], y[i], std::move(carry));
+    }
+    return ret;
+}
 
 extern template class IntVar<true, 8>;
 extern template class IntVar<false, 8>;

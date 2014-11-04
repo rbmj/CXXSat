@@ -55,12 +55,14 @@ public:
         pimpl_emplace_argument(ptr);
         return ptr;
     }
+    static std::shared_ptr<Value> getLiteralTrue(const std::weak_ptr<Circuit::impl>&);
+    static std::shared_ptr<Value> getLiteralFalse(const std::weak_ptr<Circuit::impl>&);
     std::shared_ptr<Value> getLiteralTrue() const;
     std::shared_ptr<Value> getLiteralFalse() const;
     BitVar getLiteral(bool) const;
     template <class T>
     T getLiteral(typename T::int_type t) const {
-        return T(t, *this);
+        return T(t, pimpl_get_self());
     }
     void yield(const std::shared_ptr<Variable>&, std::vector<BitVar>);
     void yield(const std::shared_ptr<Variable>& v);
@@ -78,7 +80,7 @@ public:
     void constrain_equal(bool);
     template <class T>
     void constrain_equal(typename T::int_type t) {
-        constrain_equal(std::make_shared<T>(t, *this));
+        constrain_equal(std::make_shared<T>(t, pimpl_get_self()));
     }
     Problem generateCNF() const;
 };
@@ -264,5 +266,11 @@ std::shared_ptr<Circuit::Value> Xnor(std::shared_ptr<Circuit::Value>, std::share
 std::shared_ptr<Circuit::Value> Not(std::shared_ptr<Circuit::Value>);
 std::shared_ptr<Circuit::Value> MultiAnd(const std::vector<std::shared_ptr<Circuit::Value>>&);
 std::shared_ptr<Circuit::Value> MultiOr(const std::vector<std::shared_ptr<Circuit::Value>>&);
+
+typedef std::pair<std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>> AdderResT;
+AdderResT FullAdder(
+        std::shared_ptr<Circuit::Value> a,
+        std::shared_ptr<Circuit::Value> b,
+        std::shared_ptr<Circuit::Value> carry);
 
 #endif

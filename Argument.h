@@ -15,7 +15,11 @@ typedef std::vector<std::shared_ptr<Circuit::Input>> InputVec;
 class Argument {
 private:
     InputVec inputs;
+    std::weak_ptr<Circuit::impl> circuit;
 public:
+    const std::weak_ptr<Circuit::impl>& getCircuit() const {
+        return circuit;
+    }
     InputVec& getInputs() {
         return inputs;
     }
@@ -23,7 +27,8 @@ public:
         return inputs;
     }
     template <class... Args>
-    Argument(Args&&... args) : inputs(std::forward<Args>(args)...) {}
+    Argument(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
+        circuit(c), inputs(std::forward<Args>(args)...) {}
     virtual ~Argument() {}
     virtual void print(std::ostream&, const Solution&) const = 0;
     std::string toString(const Solution&) const;
@@ -46,7 +51,7 @@ template <bool Signed, unsigned N>
 class IntArg : public Argument {
 public:
     typedef IntegerType<Signed, N> int_type;
-    IntArg(const std::weak_ptr<Circuit::impl>& c) : Argument() {
+    IntArg(const std::weak_ptr<Circuit::impl>& c) : Argument(c) {
         auto& i = getInputs();
         std::generate_n(std::inserter(i, begin(i)), N,
                 [&c]() { return Circuit::Input::create(c); });
