@@ -1,4 +1,4 @@
-#include "Sat.h"
+#include <CXXSat/Sat.h>
 
 #include <sstream>
 #include <string>

@@ -1,9 +1,9 @@
 #ifndef VARIABLE_H_INC
 #define VARIABLE_H_INC
 
-#include "Circuit.h"
-#include "Range.h"
-#include "IntegerTypes.h"
+#include <CXXSat/Circuit.h>
+#include <CXXSat/Range.h>
+#include <CXXSat/IntegerTypes.h>
 
 #include <array>
 #include <memory>
@@ -183,7 +183,7 @@ private:
     static this_t do_addition(const this_t&, const this_t&, bool carry);
 };
 
-#include "Argument.h"
+#include <CXXSat/Argument.h>
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N>::IntVar(const arg_t& arg) : Variable::Base<this_t>(arg.getCircuit()) {

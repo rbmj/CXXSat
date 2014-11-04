@@ -1,7 +1,7 @@
 #ifndef GATES_H_INC
 #define GATES_H_INC
 
-#include "Circuit.h"
+#include <CXXSat/Circuit.h>
 #include <assert.h>
 
 template <class DerivedGate>

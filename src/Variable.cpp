@@ -1,5 +1,5 @@
-#include "Variable.h"
-#include "Circuit.h"
+#include <CXXSat/Variable.h>
+#include <CXXSat/Circuit.h>
 
 //explicit instantiation
 template class std::vector<std::shared_ptr<Circuit::Value>>;

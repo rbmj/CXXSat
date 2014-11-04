@@ -12,8 +12,8 @@
 #include <string>
 #include <assert.h>
 
-#include "Range.h"
-#include "Sat.h"
+#include <CXXSat/Range.h>
+#include <CXXSat/Sat.h>
 
 //From an efficiency standpoint, I'm not completely satisfied with
 //the extent of shared_ptr<> use here.  I wish I could do more stuff

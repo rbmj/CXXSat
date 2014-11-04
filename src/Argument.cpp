@@ -1,8 +1,8 @@
 #include <sstream>
 
-#include "Argument.h"
-#include "Circuit.h"
-#include "Variable.h"
+#include <CXXSat/Argument.h>
+#include <CXXSat/Circuit.h>
+#include <CXXSat/Variable.h>
 
 //explicit instantiation
 template class IntArg<true, 8>;

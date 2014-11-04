@@ -1,6 +1,6 @@
-#include "Circuit.h"
-#include "Gates.h"
-#include "Variable.h"
+#include <CXXSat/Circuit.h>
+#include <CXXSat/Gates.h>
+#include <CXXSat/Variable.h>
 
 struct return_value {
     std::shared_ptr<Variable> value;

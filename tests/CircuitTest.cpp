@@ -1,8 +1,8 @@
 #include <iostream>
-#include "../Circuit.h"
-#include "../Argument.h"
-#include "../Variable.h"
-#include "../Sat.h"
+#include <CXXSat/Circuit.h>
+#include <CXXSat/Argument.h>
+#include <CXXSat/Variable.h>
+#include <CXXSat/Sat.h>
 
 int main() {
     auto c = Circuit();

@@ -1,4 +1,4 @@
-#include "Gates.h"
+#include <CXXSat/Gates.h>
 
 // From http://en.wikipedia.org/wiki/Tseitin_transformation
 

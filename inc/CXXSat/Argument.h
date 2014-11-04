@@ -6,9 +6,9 @@
 #include <string>
 #include <ostream>
 
-#include "Sat.h"
-#include "Circuit.h"
-#include "IntegerTypes.h"
+#include <CXXSat/Sat.h>
+#include <CXXSat/Circuit.h>
+#include <CXXSat/IntegerTypes.h>
 
 typedef std::vector<std::shared_ptr<Circuit::Input>> InputVec;
 
@@ -61,7 +61,7 @@ public:
     void print(std::ostream&, const Solution&) const;
 };
 
-#include "Variable.h"
+#include <CXXSat/Variable.h>
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N> IntArg<Signed, N>::asValue() const {
