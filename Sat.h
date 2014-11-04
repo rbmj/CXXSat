@@ -28,7 +28,7 @@ public:
     const_iterator begin() const;
     iterator end();
     const_iterator end() const;
-    Solution solve() const;
+    Solution solve(bool = false) const;
 };
 
 class Solution {
@@ -39,6 +39,8 @@ private:
     Solution(std::unique_ptr<varmap_t>&& a) : varmap(std::move(a)) {}
     Solution() = default;
 public:
+    Solution(const Solution&) = default;
+    Solution(Solution&&) = default;
     bool operator[](int i) const {
         return (*varmap)[i];
     }

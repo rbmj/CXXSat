@@ -79,7 +79,13 @@ IntegerType<Signed, N> IntArg<Signed, N>::solution(
 
 template <bool Signed, unsigned N>
 void IntArg<Signed, N>::print(std::ostream& o, const Solution& s) const {
-    o << solution(s);
+    if (N == 8) {
+        //prevent {u,}int8_t from printing as char
+        o << (int)solution(s);
+    }
+    else {
+        o << solution(s);
+    }
 }
 
 extern template class IntArg<true, 8>;
@@ -91,13 +97,13 @@ extern template class IntArg<false, 32>;
 extern template class IntArg<true, 64>;
 extern template class IntArg<false, 64>;
 
-typedef IntArg<true, 8> UIntArg8;
-typedef IntArg<false, 8> IntArg8;
-typedef IntArg<true, 16> UIntArg16;
-typedef IntArg<false, 16> IntArg16;
-typedef IntArg<true, 32> UIntArg32;
-typedef IntArg<false, 32> IntArg32;
-typedef IntArg<true, 64> UIntArg64;
-typedef IntArg<false, 64> IntArg64;
+typedef IntArg<true, 8> IntArg8;
+typedef IntArg<false, 8> UIntArg8;
+typedef IntArg<true, 16> IntArg16;
+typedef IntArg<false, 16> UIntArg16;
+typedef IntArg<true, 32> IntArg32;
+typedef IntArg<false, 32> UIntArg32;
+typedef IntArg<true, 64> IntArg64;
+typedef IntArg<false, 64> UIntArg64;
 
 #endif

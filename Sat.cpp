@@ -36,7 +36,7 @@ void Problem::printDIMACS(std::ostream& s) const {
     }
 }
 
-Solution Problem::solve() const {
+Solution Problem::solve(bool debug) const {
     Minisat::Solver s;
     Minisat::vec<Minisat::Lit> lits;
     for (auto& clause : clauses) {
@@ -55,16 +55,20 @@ Solution Problem::solve() const {
     //perhaps use solveLimited here for resource constraints later
     if (s.simplify() && s.solve()) {
         auto solution = std::make_unique<std::unordered_map<int, bool>>();
-        for (int i = 0; i < s.nVars(); ++i) {
+        for (int i = 0; i < s.nVars();) {
             if (s.model[i] != Minisat::l_Undef) {
+                //Note the ++ in this - to avoid off-by-one errors
                 if (s.model[i] != Minisat::l_True) {
-                    solution->insert({i, false});
+                    solution->insert({++i, false});
+                    if (debug) std::cout << -i << ' ';
                 }
                 else {
-                    solution->insert({i, true});
+                    solution->insert({++i, true});
+                    if (debug) std::cout << i << ' ';
                 }
             }
         }
+        if (debug) std::cout << '\n';
         return Solution(std::move(solution));
     }
     else {
