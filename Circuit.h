@@ -57,8 +57,23 @@ public:
     }
     std::shared_ptr<Value> getLiteralTrue() const;
     std::shared_ptr<Value> getLiteralFalse() const;
-    void yield(const std::shared_ptr<Variable>&, std::vector<BitVar>&&);
+    BitVar getLiteral(bool) const;
+    template <class T>
+    T getLiteral(typename T::int_type t) const {
+        return T(t, *this);
+    }
+    void yield(const std::shared_ptr<Variable>&, std::vector<BitVar>);
     void yield(const std::shared_ptr<Variable>& v);
+    template <class T, class = typename 
+        std::enable_if<std::is_base_of<Variable, T>::value>::type>
+    void yield(const T& t, const std::vector<BitVar>& v) {
+        yield(t.clone_shared(), v);
+    }
+    template <class T, class = typename 
+        std::enable_if<std::is_base_of<Variable, T>::value>::type>
+    void yield(const T& t) {
+        yield(t.clone_shared());
+    }
     void constrain_equal(const std::shared_ptr<Variable>& v);
     void constrain_equal(bool);
     template <class T>

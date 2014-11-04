@@ -1,8 +1,8 @@
 #include <iostream>
-#include "Circuit.h"
-#include "Argument.h"
-#include "Variable.h"
-#include "Sat.h"
+#include "../Circuit.h"
+#include "../Argument.h"
+#include "../Variable.h"
+#include "../Sat.h"
 
 int main() {
     auto c = Circuit();
@@ -13,7 +13,7 @@ int main() {
     auto x2 = x2_arg->asValue();
     auto x3 = x3_arg->asValue();
     auto y = (!x1 & x2) | (x1 & !x2) | (!x2 & x3);
-    c.yield(y.clone_shared());
+    c.yield(y);
     c.constrain_equal(true);
     /*
     std::cout << "x1: " << x1_arg->getID() << '\n';

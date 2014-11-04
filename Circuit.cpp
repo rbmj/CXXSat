@@ -59,7 +59,7 @@ void Circuit::pimpl_emplace_argument(std::shared_ptr<Argument> ptr) {
     pimpl->arguments.emplace(std::move(ptr));
 }
 
-void Circuit::yield(const std::shared_ptr<Variable>& v, std::vector<BitVar>&& conds) {
+void Circuit::yield(const std::shared_ptr<Variable>& v, std::vector<BitVar> conds) {
     pimpl->return_values.push_back({v, std::move(conds)});
 }
 
@@ -69,8 +69,13 @@ void Circuit::number() const {
         wire->id = ++i;
     }
 }
+
 void Circuit::yield(const std::shared_ptr<Variable>& v) {
     yield(v, {});
+}
+
+BitVar Circuit::getLiteral(bool b) const {
+    return BitVar(b, *this);
 }
 
 void Circuit::constrain_equal(const std::shared_ptr<Variable>& v) {
