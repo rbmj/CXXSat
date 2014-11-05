@@ -5,34 +5,21 @@
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendAction.h>
 #include <clang/Frontend/FrontendActions.h>
-#include <clang/Tooling/CommonOptionsParser.h>
-#include <clang/Tooling/Tooling.h>
-// Declares llvm::cl::extrahelp.
-#include <llvm/Support/CommandLine.h>
 
 #include <functional>
 
 typedef std::function<void(clang::FunctionDecl*)> FindFunctionCallback;
 
-// Apply a custom category to all command-line options so that they are the
-// only ones displayed.
-static llvm::cl::OptionCategory MyToolCategory("my-tool options");
-
-// CommonOptionsParser declares HelpMessage with a description of the common
-// command-line options related to the compilation database and input files.
-// It's nice to have this help message in all tools.
-static llvm::cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
-
-// A help message for this specific tool can be added afterwards.
-static llvm::cl::extrahelp MoreHelp("\nMore help text...\n");
-
 class FindFunctionVisitor 
         : public clang::RecursiveASTVisitor<FindFunctionVisitor>
 {
 public:
-    explicit FindFunctionVisitor(clang::ASTContext* c) : context(c) {}
+    explicit FindFunctionVisitor(clang::ASTContext* c, const char* f,
+            FindFunctionCallback cb) 
+        : context(c) , funcname(f), callback(std::move(cb)) {}
     bool VisitFunctionDecl(clang::FunctionDecl* decl) {
-        if (decl->getQualifiedNameAsString() == "f") {
+        if (decl->getQualifiedNameAsString() == funcname) {
+            /*
             clang::FullSourceLoc l = 
                     context->getFullLoc(decl->getLocStart());
             if (l.isValid()) {
@@ -40,16 +27,23 @@ public:
                     << l.getSpellingLineNumber() << ":" 
                     << l.getSpellingColumnNumber() << "\n";
             }
+            */
+            if (decl->doesThisDeclarationHaveABody()) {
+                //
+            }
         }
         return true;
     }
 private:
     clang::ASTContext* context;
+    const char* funcname;
+    FindFunctionCallback callback;
 };
 
 class FindFunctionConsumer : public clang::ASTConsumer {
 public:
-    explicit FindFunctionConsumer(clang::ASTContext* c) : visitor(c) {}
+    explicit FindFunctionConsumer(clang::ASTContext* c, const char* f,
+            FindFunctionCallback cb) : visitor(c, f, std::move(cb)) {}
     virtual void HandleTranslationUnit(clang::ASTContext &context) {
         visitor.TraverseDecl(context.getTranslationUnitDecl());
     }
@@ -59,17 +53,17 @@ private:
 
 class FindFunctionAction : public clang::ASTFrontendAction {
 public:
+    FindFunctionAction(const char* fname, FindFunctionCallback cb)
+        : func(fname), callback(cb) {}
     virtual clang::ASTConsumer* CreateASTConsumer(
             clang::CompilerInstance& compiler,
             llvm::StringRef inFile)
     {
-        return new FindFunctionConsumer(&compiler.getASTContext());
+        return new FindFunctionConsumer(&compiler.getASTContext(),
+                func, callback);
     }
+private:
+    const char* func;
+    FindFunctionCallback callback;
 };
 
-int main(int argc, const char **argv) {
-    if (argc > 2) {
-        clang::tooling::runToolOnCode(new FindFunctionAction(argv[2]), argv[1]);
-    }
-    return 0;
-}
