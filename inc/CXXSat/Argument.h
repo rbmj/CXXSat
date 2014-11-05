@@ -28,7 +28,7 @@ public:
     }
     template <class... Args>
     Argument(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
-        circuit(c), inputs(std::forward<Args>(args)...) {}
+        inputs(std::forward<Args>(args)...), circuit(c) {}
     virtual ~Argument() {}
     virtual void print(std::ostream&, const Solution&) const = 0;
     std::string toString(const Solution&) const;

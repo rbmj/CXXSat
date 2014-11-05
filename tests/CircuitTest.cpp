@@ -12,7 +12,8 @@ int main() {
     auto x1 = x1_arg->asValue();
     auto x2 = x2_arg->asValue();
     auto x3 = x3_arg->asValue();
-    auto y = (!x1 & x2) | (x1 & !x2) | (!x2 & x3);
+    //auto y = (!x1 & x2) | (x1 & !x2) | (!x2 & x3);
+    auto y = BitVar::MultiOr({x1, x2, x3});
     c.yield(y);
     c.constrain_equal(true);
     /*

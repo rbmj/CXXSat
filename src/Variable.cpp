@@ -75,6 +75,23 @@ BitVar BitVar::Xnor(const BitVar& a, const BitVar& b) {
     return BitVar(::Xnor(a.getBits().at(0), b.getBits().at(0)));
 }
 
+BitVar BitVar::MultiAnd(const std::vector<BitVar>& vec) {
+    std::vector<value_ptr> values;
+    for (auto& var : vec) {
+        values.push_back(var.getBits()[0]);
+    }
+    return BitVar(::MultiAnd(values));
+}
+
+BitVar BitVar::MultiOr(const std::vector<BitVar>& vec) {
+    std::vector<value_ptr> values;
+    for (auto& var : vec) {
+        values.push_back(var.getBits()[0]);
+    }
+    return BitVar(::MultiOr(values));
+}
+
+
 int BitVar::getID() const {
     return getBits().at(0)->getID();
 }

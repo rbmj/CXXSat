@@ -32,6 +32,8 @@ struct Circuit::impl {
     void unreg(Wire* w) {
         wires.erase(wires.find(w));
     }
+    std::shared_ptr<Input> lit0;
+    std::shared_ptr<Input> lit1;
     std::unordered_set<Input*> inputs;
     std::unordered_set<Value*> outputs;
     std::unordered_set<Gate*> gates;
@@ -39,8 +41,6 @@ struct Circuit::impl {
     std::vector<return_value> return_values;
     std::shared_ptr<Value> final_output;
     std::unordered_set<std::shared_ptr<Argument>> arguments;
-    std::shared_ptr<Input> lit0;
-    std::shared_ptr<Input> lit1;
     std::weak_ptr<Circuit::impl> self;
 };
 
@@ -103,7 +103,7 @@ void Circuit::constrain_equal(const std::shared_ptr<Variable>& v) {
     }
 }
 
-void Circuit::constrain_equal(bool b) {
+void Circuit::constrain_equal_bitvar(bool b) {
     constrain_equal(std::make_shared<BitVar>(b, pimpl_get_self()));
 }
 
@@ -124,7 +124,7 @@ Problem Circuit::generateCNF() const {
     }
     return std::move(p);
 }
-    
+
 std::shared_ptr<Circuit::Value> Circuit::getLiteralTrue(const std::weak_ptr<Circuit::impl>& c) {
     auto pimpl = c.lock();
     assert(pimpl);

@@ -31,7 +31,7 @@ public:
     Variable(Variable&&) = default;
     template <class... Args>
     Variable(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
-        circuit(c), bits(std::forward<Args>(args)...) {}
+        bits(std::forward<Args>(args)...), circuit(c) {}
     virtual ~Variable() {}
     const std::weak_ptr<Circuit::impl>& getCircuit() const {
         return circuit;
@@ -69,6 +69,8 @@ public:
 class BitArgument;
 class BitVar : public Variable::Base<BitVar> {
 public:
+    //for compatibility purposes
+    typedef bool int_type;
     BitVar(const BitArgument& arg);
     BitVar(const BitVar& v);
     explicit BitVar(value_ptr);
@@ -81,6 +83,8 @@ public:
     static BitVar Nor(const BitVar&, const BitVar&);
     static BitVar Xor(const BitVar&, const BitVar&);
     static BitVar Xnor(const BitVar&, const BitVar&);
+    static BitVar MultiAnd(const std::vector<BitVar>&);
+    static BitVar MultiOr(const std::vector<BitVar>&);
     BitVar& operator=(const BitVar& b);
     BitVar operator!() const {
         return Not(*this);
@@ -118,14 +122,18 @@ public:
 template <bool Signed, unsigned N>
 class IntArg;
 
+//NOTE:  The bits here are stored little-endian
 template <bool Signed, unsigned N>
 class IntVar : public Variable::Base<IntVar<Signed, N>> {
+    template <bool NewSigned, unsigned NewN>
+    friend class IntVar;
 public:
     typedef IntegerType<Signed, N> int_type;
     typedef IntVar<Signed, N> this_t;
     typedef IntArg<Signed, N> arg_t;
     IntVar(const arg_t&);
     IntVar(const this_t&);
+    IntVar(const BitVar&);
     IntVar(int_type, const std::weak_ptr<Circuit::impl>&);
     static this_t Not(const this_t&);
     static this_t And(const this_t&, const this_t&);
@@ -134,11 +142,36 @@ public:
     static this_t Nor(const this_t&, const this_t&);
     static this_t Xor(const this_t&, const this_t&);
     static this_t Xnor(const this_t&, const this_t&);
+    static this_t MultiOr(const std::vector<this_t>&);
+    static this_t MultiAnd(const std::vector<this_t>&);
     static this_t Add(const this_t&, const this_t&);
     static this_t Sub(const this_t&, const this_t&);
+    static this_t Shl(const this_t&, unsigned);
+    static this_t Shl(const this_t&, const this_t&);
+    static this_t Shr(const this_t&, unsigned);
+    static this_t Shr(const this_t&, const this_t&);
+    static IntVar<Signed, N*2> Mul(const this_t&, const this_t&);
+    static this_t generateMask(const BitVar&);
+    static this_t Ternary(const BitVar&, const this_t&, const this_t&);
+    static this_t Ternary(const value_ptr& a, const this_t& b, const this_t& c) {
+        return Ternary(BitVar(a), b, c); //not optimal, but w/e
+    }
+    static void DivRem(const this_t&, const this_t&, this_t*, this_t*);
+    this_t abs() const {
+        if (Signed) {
+            return Ternary(this->getBits()[N-1], -(*this), *this);
+        }
+        else {
+            return *this;
+        }
+    }
     this_t& operator=(const this_t& b);
     this_t operator~() const {
         return Not(*this);
+    }
+    this_t operator-() const {
+        this_t zero(0, this->getCircuit());
+        return zero - *this;
     }
     this_t& operator&=(const this_t& v) {
         return *this = *this & v;
@@ -155,6 +188,27 @@ public:
     this_t& operator-=(const this_t& v) {
         return *this = *this - v;
     }
+    this_t& operator<<=(const this_t& v) {
+        return *this = *this << v;
+    }
+    this_t& operator<<=(int_type i) {
+        return *this = *this << i;
+    }
+    this_t& operator>>=(const this_t& v) {
+        return *this = *this >> v;
+    }
+    this_t& operator>>=(int_type i) {
+        return *this = *this >> i;
+    }
+    this_t& operator*=(const this_t& v) {
+        return *this = *this * v;
+    }
+    this_t& operator/=(const this_t& v) {
+        return *this = *this / v;
+    }
+    this_t& operator%=(const this_t& v) {
+        return *this = *this % v;
+    }
     this_t operator&(const this_t& v) const {
         return And(*this, v);
     }
@@ -170,17 +224,87 @@ public:
     this_t operator-(const this_t& v) const {
         return Sub(*this, v);
     }
+    this_t operator>>(int_type i) const {
+        return Shr(*this, i);
+    }
+    this_t operator>>(const this_t& v) const {
+        return Shr(*this, v);
+    }
+    this_t operator<<(int_type i) const {
+        return Shl(*this, i);
+    }
+    this_t operator<<(const this_t& v) const {
+        return Shl(*this, v);
+    }
+    this_t operator*(const this_t& v) const {
+        return Mul(*this, v).template cast<Signed, N>(); //implicitly truncate
+    }
+    this_t operator/(const this_t& v) const {
+        this_t x(this->getCircuit());
+        DivRem(*this, v, &x, nullptr);
+        return std::move(x);
+    }
+    this_t operator%(const this_t& v) const {
+        this_t x(this->getCircuit());
+        DivRem(*this, v, nullptr, &x);
+        return std::move(x);
+    }
     BitVar operator==(const this_t& v) const {
         const auto& i = Xnor(*this, v);
-        return BitVar(MultiAnd(i.getBits()));
+        return BitVar(::MultiAnd(i.getBits()));
     }
+    BitVar operator==(int_type n) const {
+        this_t x = *this;
+        auto& bits = x.getBits();
+        for (unsigned i = 0; i < N; ++i) {
+            if (!((n >> i) & 1)) {
+                bits[i] = ::Not(bits[i]);
+            }
+        }
+        return BitVar(::MultiAnd(bits));
+    }
+    BitVar isZero() const {
+        return BitVar(::MultiOr(this->getBits()));
+    }
+    BitVar operator!=(int_type n) const {
+        return !(*this == n);
+    }
+    BitVar operator!=(const this_t& v) const {
+        return !(*this == v);
+    }
+    BitVar operator<(const this_t& v) const;
+    BitVar operator>=(const this_t& v) const {
+        return !(*this < v);
+    }
+    BitVar operator<=(const this_t& v) const {
+        return (*this < v) | (*this == v);
+    }
+    BitVar operator>(const this_t& v) const {
+        return !(*this <= v);
+    }
+    BitVar isNeg() const {
+        if (Signed) {
+            return BitVar(this->getBits()[N-1]);
+        }
+        else {
+            return BitVar(false, this->getCircuit());
+        }
+    }
+    template <bool NewSigned, unsigned NewN>
+    IntVar<NewSigned, NewN> cast() const;
 private:
     template <class... Args>
     explicit IntVar(const std::weak_ptr<Circuit::impl>& c, Args&&... args) 
         : Variable::Base<this_t>(c, std::forward<Args>(args)...) {}
     template <class Op>
     void binary_transform(const this_t&, const this_t&, Op);
-    static this_t do_addition(const this_t&, const this_t&, bool carry);
+    template <class Op>
+    void variadic_transform(const std::vector<this_t>&, Op);
+    static this_t mask_all(this_t, const BitVar&);
+    static this_t do_addition(const this_t&, const this_t&, bool, 
+            value_ptr* = nullptr);
+    static void divrem_unsigned(const this_t&, const this_t&, this_t*, this_t*);
+    static IntVar<Signed, N*2> mul_unsigned(const this_t&, const this_t&);
 };
 
 #include <CXXSat/Argument.h>
@@ -206,6 +330,14 @@ IntVar<Signed, N>::IntVar(const this_t& var) : Variable::Base<this_t>(var.getCir
 }
 
 template <bool Signed, unsigned N>
+IntVar<Signed, N>::IntVar(const BitVar& bit) : Variable::Base<this_t>(bit.getCircuit()) {
+    this->getBits().push_back(bit.getBit());
+    for (unsigned i = 1; i < N; ++i) {
+        this->getBits().push_back(Circuit::getLiteralFalse(this->getCircuit()));
+    }
+}
+
+template <bool Signed, unsigned N>
 IntVar<Signed, N>::IntVar(int_type t, const std::weak_ptr<Circuit::impl>& c) : Variable::Base<this_t>(c) {
     for (unsigned i = 0; i < N; ++i) {
         this->getBits().push_back((t >> i) & 1 ?
@@ -225,6 +357,17 @@ IntVar<Signed, N>& IntVar<Signed, N>::operator=(const this_t& other) {
                 return v->clone();
             });
     return *this;
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::generateMask(const BitVar& b) {
+    this_t x(b.getCircuit());
+    const auto& bit = b.getBit();
+    auto& bits = x.getBits();
+    for (unsigned i = 0; i < N; ++i) {
+        bits.push_back(bit);
+    }
+    return std::move(x);
 }
 
 template <bool Signed, unsigned N>
@@ -251,6 +394,22 @@ void IntVar<Signed, N>::binary_transform(const this_t& a, const this_t& b, Op op
     std::transform(begin(abits), end(abits), begin(bbits), inserter, op);
 }
 
+template <bool Signed, unsigned N>
+template <class Op>
+void IntVar<Signed, N>::variadic_transform(const std::vector<this_t>& vec, Op op) {
+    unsigned num = vec.size();
+    std::vector<value_ptr> values(num);
+    auto& bits = this->getBits();
+    bits.clear();
+    for (unsigned i = 0; i < N; ++i) {
+        for (unsigned j = 0; j < num; ++j) {
+            values[j] = vec[j].getBits()[i];
+        }
+        bits.push_back(op(values));
+    }
+}
+    
+
 #define DEFINE_BINARY_OP(name) \
     template <bool Signed, unsigned N> \
     IntVar<Signed, N> IntVar<Signed, N>::name(const this_t& a, const this_t& b) { \
@@ -271,6 +430,20 @@ DEFINE_BINARY_OP(Xnor);
 #undef DEFINE_BINARY_OP
 
 template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::MultiAnd(const std::vector<this_t>& vec) {
+    this_t x(vec.at(0).getCircuit());
+    x.variadic_transform(vec, ::MultiAnd);
+    return std::move(x);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::MultiOr(const std::vector<this_t>& vec) {
+    this_t x(vec.at(0).getCircuit());
+    x.variadic_transform(vec, ::MultiOr);
+    return std::move(x);
+}
+
+template <bool Signed, unsigned N>
 IntVar<Signed, N> IntVar<Signed, N>::Add(const this_t& a, const this_t& b) {
     return do_addition(a, b, false);
 }
@@ -281,7 +454,17 @@ IntVar<Signed, N> IntVar<Signed, N>::Sub(const this_t& a, const this_t& b) {
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& b, bool c) {
+IntVar<Signed, N> IntVar<Signed, N>::mask_all(this_t a, const BitVar& b) {
+    auto& x = a.getBits();
+    auto& y = b.getBits()[0];
+    for (unsigned i = 0; i < N; ++i) {
+        x[i] = ::And(x[i], y);
+    }
+    return std::move(a);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& b, bool c, value_ptr* carry_out) {
     auto carry = c ? Circuit::getLiteralTrue(a.getCircuit()) 
         : Circuit::getLiteralFalse(a.getCircuit());
     this_t ret(a.getCircuit(), N);
@@ -291,8 +474,185 @@ IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& 
     for (unsigned i = 0; i < N; ++i) {
         std::tie(z[i], carry) = FullAdder(x[i], y[i], std::move(carry));
     }
-    return ret;
+    if (carry_out) {
+        *carry_out = carry;
+    }
+    return std::move(ret);
 }
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Shl(const this_t& t, unsigned n) {
+    //left shift
+    this_t ret(t.getCircuit(), N);
+    auto& t_bits = t.getBits();
+    auto& bits = ret.getBits();
+    unsigned i = 0;
+    for (; i < n; ++i) {
+        bits[i] = Circuit::getLiteralFalse(t.getCircuit());
+    }
+    for (; i < N; ++i) {
+        bits[i] = t_bits[i - n]->clone();
+    }
+    return std::move(ret);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Shl(const this_t& t, const this_t& n) {
+    //left shift
+    std::vector<IntVar<Signed, N>> integers;
+    for (int_type i = 0; (unsigned)i < N; ++i) {
+        auto iseq = (n == i);
+        integers.push_back(mask_all(Shl(t, (unsigned)i), iseq));
+    }
+    return MultiOr(integers);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Shr(const this_t& t, unsigned n) {
+    //right shift
+    this_t ret(t.getCircuit(), N);
+    auto& t_bits = t.getBits();
+    auto& bits = ret.getBits();
+    unsigned i = 0;
+    for (; i < n; ++i) {
+        if (Signed) {
+            bits[(N - 1) - i] = t_bits[N - 1]->clone();
+        }
+        else {
+            bits[(N - 1) - i] = Circuit::getLiteralFalse(t.getCircuit());
+        }
+    }
+    for (; i < N; ++i) {
+        bits[(N - 1) - i] = t_bits[(N - 1) - (i - n)]->clone();
+    }
+    return std::move(ret);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Shr(const this_t& t, const this_t& n) {
+    //right shift
+    std::vector<IntVar<Signed, N>> integers;
+    std::vector<BitVar> bits;
+    for (int_type i = 0; (unsigned)i < N; ++i) {
+        auto iseq = (n == i);
+        integers.push_back(mask_all(Shr(t, (unsigned)i), iseq));
+        bits.push_back(iseq);
+    }
+    if (Signed) {
+        //this is Undefined Behavior, but is the most intuitive result
+        integers.push_back(mask_all(this_t((int_type)-1, t.getCircuit()), !(BitVar::MultiOr(bits))));
+    }
+    return MultiOr(integers);
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::operator<(const this_t& t) const {
+    value_ptr carry_out;
+    //subtract *this - t, get the carry
+    auto comparison = do_addition(*this, ~t, true, &carry_out);
+    if (Signed) {
+        //if signed, have to do a carry computation for the sign bits:
+        auto extra_bit = ::Xor(this->getBits()[N-1], ::Not(t.getBits()[N-1]));
+        return BitVar(::Xor(extra_bit, carry_out));
+    }
+    else {
+        //if unsigned, a carry indicates the result of the subtraction is
+        //positive or zero, so *this >= t
+        return BitVar(::Not(carry_out));
+    }
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N> IntVar<Signed, N>::Ternary(const BitVar& b, const this_t& t, const this_t& f) {
+    return mask_all(t, b) | mask_all(f, !b);
+}
+
+template <bool Signed, unsigned N>
+void IntVar<Signed, N>::DivRem(const this_t& val, const this_t& div,
+        this_t* quot, this_t* rem)
+{
+    //abs is noop for unsigned
+    divrem_unsigned(val.abs(), div.abs(), quot, rem);
+    if (Signed) {
+        if (rem) {
+            *rem = Ternary(val.isNeg(), -(*rem), *rem);
+        }
+        if (quot) {
+            *quot = Ternary(val.isNeg() ^ div.isNeg(), -(*quot), *quot);
+        }
+    }
+}
+
+template <bool Signed, unsigned N>
+void IntVar<Signed, N>::divrem_unsigned(const this_t& val, const this_t& div,
+        this_t* quot, this_t* rem)
+{
+    this_t q(val.getCircuit(), N);
+    this_t r(0, val.getCircuit());
+    //handle division by zero in a somewhat sane manner
+    this_t mask = generateMask(div == 0);
+    for (unsigned i = 0; i < N; ++i) {
+        r <<= 1;
+        r.getBits()[0] = val.getBits()[N - 1 - i];
+        auto should_sub = r >= div;
+        q.getBits()[N - 1 - i] = should_sub.getBit()->clone();
+        r = Ternary(should_sub, r - div, r);
+    }
+    if (quot) {
+        *quot = std::move(q);
+    }
+    if (rem) {
+        *rem = std::move(r);
+    }
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N*2> IntVar<Signed, N>::Mul(const this_t& a, const this_t& b) {
+    auto ret = mul_unsigned(a.abs(), b.abs());
+    if (Signed) {
+        ret = IntVar<Signed, N*2>::Ternary(a.isNeg() ^ b.isNeg(), -ret, ret);
+    }
+    return std::move(ret);
+}
+
+template <bool Signed, unsigned N>
+IntVar<Signed, N*2> IntVar<Signed, N>::mul_unsigned(const this_t& a, const this_t& b) {
+    auto x = a.cast<Signed, N*2>();
+    IntVar<Signed, N*2> ret((typename IntVar<Signed, N*2>::int_type)0, a.getCircuit());
+    auto& bits = b.getBits();
+    for (unsigned i = 0; i < N; ++i) {
+        ret = IntVar<Signed, N*2>::Ternary(bits[i], ret + x, ret);
+        x <<= (typename IntVar<Signed, N*2>::int_type)1;
+    }
+    return std::move(ret);
+}
+
+template <bool Signed, unsigned N>
+template <bool NewSigned, unsigned NewN>
+IntVar<NewSigned, NewN> IntVar<Signed, N>::cast() const {
+    IntVar<NewSigned, NewN> ret(this->getCircuit());
+    if (NewN < N) {
+        for (unsigned i = 0; i < NewN; ++i) {
+            ret.getBits().push_back(this->getBits()[i]->clone());
+        }
+    }
+    else {
+        unsigned i;
+        for (i = 0; i < N; ++i) {
+            ret.getBits().push_back(this->getBits()[i]->clone());
+        }
+        for (; i < NewN; ++i) {
+            if (Signed) {
+                ret.getBits().push_back(this->getBits()[N-1]->clone());
+            }
+            else {
+                ret.getBits().push_back(Circuit::getLiteralFalse(this->getCircuit()));
+            }
+        }
+    }
+    return std::move(ret);
+}
+
 
 extern template class IntVar<true, 8>;
 extern template class IntVar<false, 8>;

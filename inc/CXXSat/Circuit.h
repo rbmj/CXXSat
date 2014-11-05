@@ -77,7 +77,7 @@ public:
         yield(t.clone_shared());
     }
     void constrain_equal(const std::shared_ptr<Variable>& v);
-    void constrain_equal(bool);
+    void constrain_equal_bitvar(bool);
     template <class T>
     void constrain_equal(typename T::int_type t) {
         constrain_equal(std::make_shared<T>(t, pimpl_get_self()));
@@ -139,7 +139,9 @@ public:
         to.push_back(n);
     }
     void disconnect(Node* n) {
-        to.erase(std::remove(to.begin(), to.end(), n));
+        auto it = std::find(to.begin(), to.end(), n);
+        assert(it != to.end());
+        to.erase(it);
     }
     const std::weak_ptr<Circuit::impl>& getCircuit() {
         return c;
@@ -195,12 +197,13 @@ public:
     {
         _source->connect(this);
     }
+    Value(Value&& v) = delete;
     explicit Value(const Input& i) 
         : Node(i.getCircuit(), NODE_TYPE::VALUE), _source(i.getWire())
     {
         _source->connect(this);
     }
-    Value(std::shared_ptr<Wire> w)
+    explicit Value(std::shared_ptr<Wire> w)
         : Node(w->getCircuit(), NODE_TYPE::VALUE), _source(w)
     {
         _source->connect(this);
@@ -272,5 +275,6 @@ AdderResT FullAdder(
         std::shared_ptr<Circuit::Value> a,
         std::shared_ptr<Circuit::Value> b,
         std::shared_ptr<Circuit::Value> carry);
+
 
 #endif

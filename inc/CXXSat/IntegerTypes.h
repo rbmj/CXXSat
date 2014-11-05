@@ -23,6 +23,18 @@ template <>
 struct Bits<64> {
     typedef int64_t type;
 };
+#if defined __clang__ || defined __GNUC__
+template <>
+struct Bits<128> {
+    typedef __int128_t type;
+};
+#else
+template <>
+struct Bits<128> {
+    //this may not work
+    typedef intmax_t type;
+};
+#endif
 
 template <bool Signed, unsigned N>
 struct IntegerType_t {
@@ -35,6 +47,13 @@ struct IntegerType_t<false, N> {
         typename Bits<N>::type
     >::type type;
 };
+
+#if defined __clang__ || defined __GNUC__
+template <>
+struct IntegerType_t<false, 128> {
+    typedef __uint128_t type;
+};
+#endif
 
 template <bool Signed, unsigned N>
 using IntegerType = typename IntegerType_t<Signed, N>::type;
