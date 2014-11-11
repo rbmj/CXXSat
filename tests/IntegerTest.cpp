@@ -14,9 +14,8 @@ int main() {
     auto z = y / a;
     //auto key = c.getLiteral<UIntVar32>(0x12345678);
     //auto y = x ^ key;
-    c.yield(z);
-    c.constrain_equal<UIntVar32>(0x1337);
-    auto p = c.generateCNF();
+    auto val = c.getLiteral<UIntVar32>(0x1337);
+    auto p = c.generateCNF(z == val);
     std::cout << "CNF generated\n";
     auto soln = p.solve();
     if (soln) {

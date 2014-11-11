@@ -64,25 +64,8 @@ public:
     T getLiteral(typename T::int_type t) const {
         return T(t, pimpl_get_self());
     }
-    void yield(const std::shared_ptr<Variable>&, std::vector<BitVar>);
-    void yield(const std::shared_ptr<Variable>& v);
-    template <class T, class = typename 
-        std::enable_if<std::is_base_of<Variable, T>::value>::type>
-    void yield(const T& t, const std::vector<BitVar>& v) {
-        yield(t.clone_shared(), v);
-    }
-    template <class T, class = typename 
-        std::enable_if<std::is_base_of<Variable, T>::value>::type>
-    void yield(const T& t) {
-        yield(t.clone_shared());
-    }
-    void constrain_equal(const std::shared_ptr<Variable>& v);
-    void constrain_equal_bitvar(bool);
-    template <class T>
-    void constrain_equal(typename T::int_type t) {
-        constrain_equal(std::make_shared<T>(t, pimpl_get_self()));
-    }
     Problem generateCNF() const;
+    Problem generateCNF(BitVar b) const;
 };
 
 class Circuit::Node {

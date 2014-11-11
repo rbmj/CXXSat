@@ -14,15 +14,13 @@ int main() {
     auto x3 = x3_arg->asValue();
     //auto y = (!x1 & x2) | (x1 & !x2) | (!x2 & x3);
     auto y = BitVar::MultiOr({x1, x2, x3});
-    c.yield(y);
-    c.constrain_equal(true);
     /*
     std::cout << "x1: " << x1_arg->getID() << '\n';
     std::cout << "x2: " << x2_arg->getID() << '\n';
     std::cout << "x3: " << x3_arg->getID() << '\n';
     std::cout << "y: " << y.getID() << '\n';
     */
-    auto p = c.generateCNF();
+    auto p = c.generateCNF(y);
     //p.printDIMACS(std::cout);
     auto soln = p.solve();
     if (soln) {

@@ -84,13 +84,7 @@ IntegerType<Signed, N> IntArg<Signed, N>::solution(
 
 template <bool Signed, unsigned N>
 void IntArg<Signed, N>::print(std::ostream& o, const Solution& s) const {
-    if (N == 8) {
-        //prevent {u,}int8_t from printing as char
-        o << (int)solution(s);
-    }
-    else {
-        o << solution(s);
-    }
+    o << +solution(s);
 }
 
 extern template class IntArg<true, 8>;

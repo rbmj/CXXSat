@@ -14,27 +14,87 @@ typedef std::vector<value_ptr> BitVector;
 extern template class std::vector<value_ptr>;
 
 class BitVar;
+class DynVar;
 
 class Variable {
-private:
-    BitVector bits;
-    std::weak_ptr<Circuit::impl> circuit;
-    static int class_id;
 protected:
-    virtual int getTypeID() const = 0;
+    typedef std::unique_ptr<Variable> var_ptr;
+    static constexpr int int_size = 32;
+private:
+    std::weak_ptr<Circuit::impl> circuit;
+    int type;
+    unsigned size() const {
+        return (unsigned)(sign() ? -type : type);
+    }
+    bool sign() const {
+        return type < 0;
+    }
+    bool isBit() const {
+        return type == 0;
+    }
+    using op_t = var_ptr(Variable::*)(const Variable&) const;
+    virtual var_ptr do_cast(int) const = 0;
+    virtual BitVar isZero() const = 0;
+    //begin list of operations:
+    virtual var_ptr Not() const = 0;
+    virtual var_ptr Neg() const = 0;
+    virtual var_ptr And(const Variable&) const = 0;
+    virtual var_ptr Or(const Variable&) const = 0;
+    virtual var_ptr Xor(const Variable&) const = 0;
+    virtual var_ptr Add(const Variable&) const = 0;
+    virtual var_ptr Sub(const Variable&) const = 0;
+    virtual var_ptr Mul(const Variable&) const = 0;
+    virtual var_ptr Shr(const Variable&) const = 0;
+    virtual var_ptr Shl(const Variable&) const = 0;
+    virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const = 0;
+    //end operations
+    var_ptr Div(const Variable& v) const {
+        var_ptr ret;
+        DivMod(v, &ret, nullptr);
+        return std::move(ret);
+    }
+    var_ptr Mod(const Variable& v) const {
+        var_ptr ret;
+        DivMod(v, nullptr, &ret);
+        return std::move(ret);
+    }
+protected:
+    Variable(const Variable& v) : type(v.type) {}
+    virtual std::unique_ptr<Variable> clone() const = 0;
 public:
-    template <class Derived>
+    template <class Derived, int Type>
     class Base;
-    template <class T>
+    template <class Derived, int Type>
+    class Base_base;
+    template <class Derived, int Type>
     friend class Base;
-    Variable(const Variable&) = default;
-    Variable(Variable&&) = default;
+    template <class Derived, int Type>
+    friend class Base_base;
+    friend class DynVar;
+    static std::unique_ptr<Variable> create(const Variable& v) {
+        return v.clone();
+    }
     template <class... Args>
-    Variable(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
-        bits(std::forward<Args>(args)...), circuit(c) {}
+    Variable(const std::weak_ptr<Circuit::impl>& c, int t) :
+        circuit(c), type(t) {}
     virtual ~Variable() {}
     const std::weak_ptr<Circuit::impl>& getCircuit() const {
         return circuit;
+    }
+};
+
+//define Type as 0 for a bit, N for uintN_t, -N for intN_t
+template <class Derived, int Type>
+class Variable::Base_base : public Variable {
+    template <class T, int I>
+    friend class Variable::Base;
+public:
+    template <class... Args>
+    Base_base(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
+        Variable(c, Type), bits(std::forward<Args>(args)...) {}
+    Base_base(const Base_base<Derived, Type>&) = default;
+    std::shared_ptr<Derived> clone_shared() const {
+        return std::make_shared<Derived>(CAST(*this));
     }
     BitVector& getBits() {
         return bits;
@@ -42,32 +102,88 @@ public:
     const BitVector& getBits() const {
         return bits;
     }
-    virtual BitVar operator==(const Variable& v) const = 0;
-    BitVar operator!=(const Variable& v) const;
-};
-
-template <class Derived>
-class Variable::Base : public Variable {
+    static constexpr unsigned numBits() {
+        return (Type == 0) ? 1 : (unsigned)(
+                (Type < 0) ? -Type : Type);
+    }
 private:
-    static int getTypeID_() {
-        static int id = Variable::class_id++;
-        return id;
+    virtual var_ptr Not() const {
+        return Derived::Not(CAST(*this)).clone();
+    }
+    virtual var_ptr And(const Variable& v) const {
+        return Derived::And(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Or(const Variable& v) const {
+        return Derived::Or(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Xor(const Variable& v) const {
+        return Derived::Xor(CAST(*this), CAST(v)).clone();
+    }
+    BitVector bits;
+    static const Derived& CAST(const Variable& v) {
+        assert(v.type == Type);
+        return static_cast<const Derived&>(v);
     }
 protected:
-    int getTypeID() const {
-        return getTypeID_();
+    std::unique_ptr<Variable> clone() const {
+        return std::make_unique<Derived>(CAST(*this));
     }
+};
+
+template <class Derived, int Type>
+class Variable::Base : public Variable::Base_base<Derived, Type> {
+    virtual var_ptr Add(const Variable& v) const {
+        return Derived::Add(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Sub(const Variable& v) const {
+        return Derived::Sub(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Mul(const Variable& v) const {
+        return Derived::Mul(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Shr(const Variable& v) const {
+        return Derived::Shr(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Shl(const Variable& v) const {
+        return Derived::Shl(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Neg() const {
+        return Derived::Not(CAST(*this)).clone();
+    }
+    virtual void DivMod(const Variable& d, var_ptr* qp, var_ptr* rp) const {
+        Derived q(this->getCircuit());
+        Derived r(this->getCircuit());
+        Derived::DivRem(CAST(*this), CAST(d), &q, &r);
+        if (qp) *qp = q.clone();
+        if (rp) *rp = r.clone();
+    }
+    std::unique_ptr<Variable> do_cast(int) const;
 public:
-    using Variable::Variable;
-    std::shared_ptr<Derived> clone_shared() const {
-        return std::make_shared<Derived>(*(Derived*)this);
-    }
-    BitVar operator==(const Variable& v) const;
-    virtual BitVar operator==(const Derived& d) const = 0;
+    using Base_base<Derived, Type>::Base_base;
+    using Base_base<Derived, Type>::CAST;
+};
+
+template <>
+class Variable::Base<BitVar, 0> : public Variable::Base_base<BitVar, 0> {
+    virtual var_ptr Add(const Variable&) const;
+    virtual var_ptr Sub(const Variable&) const;
+    virtual var_ptr Mul(const Variable&) const;
+    virtual var_ptr Shr(const Variable&) const;
+    virtual var_ptr Shl(const Variable&) const;
+    virtual var_ptr Neg() const;
+    virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const;
+    std::unique_ptr<Variable> do_cast(int) const;
+public:
+    using Base_base<BitVar, 0>::Base_base;
+    using Base_base<BitVar, 0>::CAST;
 };
 
 class BitArgument;
-class BitVar : public Variable::Base<BitVar> {
+class BitVar : public Variable::Base<BitVar, 0> {
+private:
+    //compatibility
+    BitVar(const std::weak_ptr<Circuit::impl>&);
+    typedef Variable::Base<BitVar, 0> Base;
 public:
     //for compatibility purposes
     typedef bool int_type;
@@ -86,6 +202,9 @@ public:
     static BitVar MultiAnd(const std::vector<BitVar>&);
     static BitVar MultiOr(const std::vector<BitVar>&);
     BitVar& operator=(const BitVar& b);
+    BitVar isZero() const {
+        return Not(*this);
+    }
     BitVar operator!() const {
         return Not(*this);
     }
@@ -122,12 +241,24 @@ public:
 template <bool Signed, unsigned N>
 class IntArg;
 
+constexpr int getTypeVal(bool Signed, unsigned N) {
+    return Signed ? -((int)N) : N;
+}
+
+
 //NOTE:  The bits here are stored little-endian
 template <bool Signed, unsigned N>
-class IntVar : public Variable::Base<IntVar<Signed, N>> {
+class IntVar : public Variable::Base<IntVar<Signed, N>, getTypeVal(Signed, N)> {
     template <bool NewSigned, unsigned NewN>
     friend class IntVar;
+    template <class T, int I>
+    friend class Variable::Base;
+private:
+    typedef Variable::Base<IntVar<Signed, N>, getTypeVal(Signed, N)> Base;
+    constexpr static unsigned multiply_limit = 128;
 public:
+    static constexpr unsigned numbits = N;
+    static constexpr bool issigned = Signed;
     typedef IntegerType<Signed, N> int_type;
     typedef IntVar<Signed, N> this_t;
     typedef IntArg<Signed, N> arg_t;
@@ -150,7 +281,18 @@ public:
     static this_t Shl(const this_t&, const this_t&);
     static this_t Shr(const this_t&, unsigned);
     static this_t Shr(const this_t&, const this_t&);
-    static IntVar<Signed, N*2> Mul(const this_t&, const this_t&);
+    template <unsigned X = N>
+    static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
+    ::type Mul_full(const this_t&, const this_t&);
+    template <unsigned X = N>
+    static typename std::enable_if<(X >= multiply_limit), IntVar<Signed, N>>
+    ::type Mul_full(const this_t& a, const this_t& b) {
+        assert(false); //can't do this
+        return a;
+    }
+    static this_t Mul(const this_t& a, const this_t& b) {
+        return Mul_full(a, b).template cast<Signed, N>(); //implicitly truncate
+    }
     static this_t generateMask(const BitVar&);
     static this_t Ternary(const BitVar&, const this_t&, const this_t&);
     static this_t Ternary(const value_ptr& a, const this_t& b, const this_t& c) {
@@ -237,7 +379,7 @@ public:
         return Shl(*this, v);
     }
     this_t operator*(const this_t& v) const {
-        return Mul(*this, v).template cast<Signed, N>(); //implicitly truncate
+        return Mul(*this, v);
     }
     this_t operator/(const this_t& v) const {
         this_t x(this->getCircuit());
@@ -295,7 +437,7 @@ public:
 private:
     template <class... Args>
     explicit IntVar(const std::weak_ptr<Circuit::impl>& c, Args&&... args) 
-        : Variable::Base<this_t>(c, std::forward<Args>(args)...) {}
+        : Base(c, std::forward<Args>(args)...) {}
     template <class Op>
     void binary_transform(const this_t&, const this_t&, Op);
     template <class Op>
@@ -305,12 +447,13 @@ private:
             value_ptr* = nullptr);
     static void divrem_unsigned(const this_t&, const this_t&, this_t*, this_t*);
     static IntVar<Signed, N*2> mul_unsigned(const this_t&, const this_t&);
+    std::unique_ptr<Variable> int_cast(bool, unsigned) const;
 };
 
 #include <CXXSat/Argument.h>
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const arg_t& arg) : Variable::Base<this_t>(arg.getCircuit()) {
+IntVar<Signed, N>::IntVar(const arg_t& arg) : Base(arg.getCircuit()) {
     const auto& i = arg.getInputs();
     auto& b = this->getBits();
     std::transform(begin(i), end(i), std::inserter(b, begin(b)),
@@ -320,7 +463,7 @@ IntVar<Signed, N>::IntVar(const arg_t& arg) : Variable::Base<this_t>(arg.getCirc
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const this_t& var) : Variable::Base<this_t>(var.getCircuit()) {
+IntVar<Signed, N>::IntVar(const this_t& var) : Base(var.getCircuit()) {
     const auto& b_other = var.getBits();
     auto& b = this->getBits();
     std::transform(begin(b_other), end(b_other), std::inserter(b, begin(b)),
@@ -330,7 +473,7 @@ IntVar<Signed, N>::IntVar(const this_t& var) : Variable::Base<this_t>(var.getCir
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const BitVar& bit) : Variable::Base<this_t>(bit.getCircuit()) {
+IntVar<Signed, N>::IntVar(const BitVar& bit) : Base(bit.getCircuit()) {
     this->getBits().push_back(bit.getBit());
     for (unsigned i = 1; i < N; ++i) {
         this->getBits().push_back(Circuit::getLiteralFalse(this->getCircuit()));
@@ -338,7 +481,7 @@ IntVar<Signed, N>::IntVar(const BitVar& bit) : Variable::Base<this_t>(bit.getCir
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(int_type t, const std::weak_ptr<Circuit::impl>& c) : Variable::Base<this_t>(c) {
+IntVar<Signed, N>::IntVar(int_type t, const std::weak_ptr<Circuit::impl>& c) : Base(c) {
     for (unsigned i = 0; i < N; ++i) {
         this->getBits().push_back((t >> i) & 1 ?
                 Circuit::getLiteralTrue(c) :
@@ -607,7 +750,9 @@ void IntVar<Signed, N>::divrem_unsigned(const this_t& val, const this_t& div,
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N*2> IntVar<Signed, N>::Mul(const this_t& a, const this_t& b) {
+template <unsigned X>
+typename std::enable_if<(X < IntVar<Signed, N>::multiply_limit), IntVar<Signed, N*2>>
+::type IntVar<Signed, N>::Mul_full(const this_t& a, const this_t& b) {
     auto ret = mul_unsigned(a.abs(), b.abs());
     if (Signed) {
         ret = IntVar<Signed, N*2>::Ternary(a.isNeg() ^ b.isNeg(), -ret, ret);
@@ -630,7 +775,7 @@ IntVar<Signed, N*2> IntVar<Signed, N>::mul_unsigned(const this_t& a, const this_
 template <bool Signed, unsigned N>
 template <bool NewSigned, unsigned NewN>
 IntVar<NewSigned, NewN> IntVar<Signed, N>::cast() const {
-    IntVar<NewSigned, NewN> ret(this->getCircuit());
+    IntVar<NewSigned, NewN> ret{this->getCircuit()};
     if (NewN < N) {
         for (unsigned i = 0; i < NewN; ++i) {
             ret.getBits().push_back(this->getBits()[i]->clone());
@@ -653,6 +798,52 @@ IntVar<NewSigned, NewN> IntVar<Signed, N>::cast() const {
     return std::move(ret);
 }
 
+template <class Derived, int Type>
+std::unique_ptr<Variable> Variable::Base<Derived, Type>::do_cast(int newtype) const {
+    std::unique_ptr<Variable> ret;
+    if (newtype == 0) {
+        ret = (!(this->isZero())).clone();
+    }
+    else {
+        return ((Derived*)this)->int_cast(newtype < 0, (unsigned)((newtype < 0) ? -newtype : newtype));
+    }
+    return ret;
+}
+
+template <bool Signed, unsigned N>
+std::unique_ptr<Variable> IntVar<Signed, N>::int_cast(bool sign, unsigned size) const {
+    if (sign) {
+        switch (size) {
+        case 8:
+            return this->template cast<true, 8>().clone();
+        case 16:
+            return this->template cast<true, 16>().clone();
+        case 32:
+            return this->template cast<true, 32>().clone();
+        case 64:
+            return this->template cast<true, 64>().clone();
+        default:
+            assert(false);
+            break;
+        }
+    }
+    else {
+        switch (size) {
+        case 8:
+            return this->template cast<false, 8>().clone();
+        case 16:
+            return this->template cast<false, 16>().clone();
+        case 32:
+            return this->template cast<false, 32>().clone();
+        case 64:
+            return this->template cast<false, 64>().clone();
+        default:
+            assert(false);
+            break;
+        }
+    }
+    return nullptr; //can't happen
+}
 
 extern template class IntVar<true, 8>;
 extern template class IntVar<false, 8>;

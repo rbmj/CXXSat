@@ -2,11 +2,6 @@
 #include <CXXSat/Gates.h>
 #include <CXXSat/Variable.h>
 
-struct return_value {
-    std::shared_ptr<Variable> value;
-    std::vector<BitVar> conditions;
-};
-
 struct Circuit::impl {
     void reg(Input* i) {
         inputs.insert(i);
@@ -38,7 +33,6 @@ struct Circuit::impl {
     std::unordered_set<Value*> outputs;
     std::unordered_set<Gate*> gates;
     std::unordered_set<Wire*> wires;
-    std::vector<return_value> return_values;
     std::shared_ptr<Value> final_output;
     std::unordered_set<std::shared_ptr<Argument>> arguments;
     std::weak_ptr<Circuit::impl> self;
@@ -59,8 +53,10 @@ void Circuit::pimpl_emplace_argument(std::shared_ptr<Argument> ptr) {
     pimpl->arguments.emplace(std::move(ptr));
 }
 
-void Circuit::yield(const std::shared_ptr<Variable>& v, std::vector<BitVar> conds) {
-    pimpl->return_values.push_back({v, std::move(conds)});
+Problem Circuit::generateCNF(BitVar b) const {
+    auto cnf = generateCNF();
+    cnf.addClause({b.getBit()->getID()});
+    return std::move(cnf);
 }
 
 void Circuit::number() const {
@@ -70,41 +66,8 @@ void Circuit::number() const {
     }
 }
 
-void Circuit::yield(const std::shared_ptr<Variable>& v) {
-    yield(v, {});
-}
-
 BitVar Circuit::getLiteral(bool b) const {
     return BitVar(b, pimpl_get_self());
-}
-
-void Circuit::constrain_equal(const std::shared_ptr<Variable>& v) {
-    std::vector<std::shared_ptr<Value>> values;
-    std::vector<std::shared_ptr<Value>> tmp;
-    assert(pimpl->return_values.size() != 0);
-    for (auto& rv : pimpl->return_values) {
-        tmp.clear();
-        tmp.push_back((*v == *(rv.value)).getBit());
-        if (rv.conditions.size() != 0) {
-            for (auto& cond : rv.conditions) {
-                tmp.push_back(cond.getBit());
-            }
-            values.push_back(MultiAnd(tmp));
-        }
-        else {
-            values.push_back(tmp[0]);
-        }
-    }
-    if (values.size() != 1) {
-        pimpl->final_output = MultiOr(values);
-    }
-    else {
-        pimpl->final_output = values.at(0);
-    }
-}
-
-void Circuit::constrain_equal_bitvar(bool b) {
-    constrain_equal(std::make_shared<BitVar>(b, pimpl_get_self()));
 }
 
 Problem Circuit::generateCNF() const {
