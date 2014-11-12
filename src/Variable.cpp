@@ -17,21 +17,14 @@ template class IntVar<false, 64>;
 
 BitVar::BitVar(const std::weak_ptr<Circuit::impl>& c) : Base(c) {}
 
-BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit()) {
-    getBits().push_back(Circuit::Value::create(arg.getInputs().at(0)));
-}
+BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit(), BitArr{{Circuit::Value::create(arg.getInput())}}) {}
 
-BitVar::BitVar(const BitVar& v) : Base(v.getCircuit()) {
-    getBits().push_back(v.getBits().at(0)->clone());
-}
+BitVar::BitVar(const BitVar& v) : Base(v.getCircuit(), BitArr{{v.getBit()->clone()}}) {}
 
-BitVar::BitVar(std::shared_ptr<Circuit::Value> v) : Base(v->getCircuit()) {
-    getBits().push_back(std::move(v));
-}
+BitVar::BitVar(std::shared_ptr<Circuit::Value> v) : Base(v->getCircuit(), BitArr{{std::move(v)}}) {}
 
-BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c) {
-    getBits().push_back(b ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c));
-}
+BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c, BitArr{{b ?
+        Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c)}}) {}
 
 value_ptr BitVar::getBit() const {
     return getBits().at(0);
@@ -39,39 +32,39 @@ value_ptr BitVar::getBit() const {
 
 BitVar& BitVar::operator=(const BitVar& v) {
     //TODO:  Assert circuits equal
-    getBits().at(0) = v.getBits().at(0)->clone();
+    getBit() = v.getBit()->clone();
     return *this;
 }
 
 BitVar BitVar::Not(BitVar v) {
-    v.getBits().at(0) = ::Not(v.getBits().at(0));
+    v.getBit() = ::Not(v.getBit());
     return std::move(v);
 }
 
 BitVar BitVar::And(const BitVar& a, const BitVar& b) {
-    return BitVar(::And(a.getBits().at(0), b.getBits().at(0)));
+    return BitVar(::And(a.getBit(), b.getBit()));
 }
 
 BitVar BitVar::Nand(const BitVar& a, const BitVar& b) {
-    return BitVar(::Nand(a.getBits().at(0), b.getBits().at(0)));
+    return BitVar(::Nand(a.getBit(), b.getBit()));
 }
 BitVar BitVar::Or(const BitVar& a, const BitVar& b) {
-    return BitVar(::Or(a.getBits().at(0), b.getBits().at(0)));
+    return BitVar(::Or(a.getBit(), b.getBit()));
 }
 BitVar BitVar::Nor(const BitVar& a, const BitVar& b) {
-    return BitVar(::Nor(a.getBits().at(0), b.getBits().at(0)));
+    return BitVar(::Nor(a.getBit(), b.getBit()));
 }
 BitVar BitVar::Xor(const BitVar& a, const BitVar& b) {
-    return BitVar(::Xor(a.getBits().at(0), b.getBits().at(0)));
+    return BitVar(::Xor(a.getBit(), b.getBit()));
 }
 BitVar BitVar::Xnor(const BitVar& a, const BitVar& b) {
-    return BitVar(::Xnor(a.getBits().at(0), b.getBits().at(0)));
+    return BitVar(::Xnor(a.getBit(), b.getBit()));
 }
 
 BitVar BitVar::MultiAnd(const std::vector<BitVar>& vec) {
     std::vector<value_ptr> values;
     for (auto& var : vec) {
-        values.push_back(var.getBits()[0]);
+        values.push_back(var.getBit());
     }
     return BitVar(::MultiAnd(values));
 }
@@ -79,13 +72,13 @@ BitVar BitVar::MultiAnd(const std::vector<BitVar>& vec) {
 BitVar BitVar::MultiOr(const std::vector<BitVar>& vec) {
     std::vector<value_ptr> values;
     for (auto& var : vec) {
-        values.push_back(var.getBits()[0]);
+        values.push_back(var.getBit());
     }
     return BitVar(::MultiOr(values));
 }
 
 int BitVar::getID() const {
-    return getBits().at(0)->getID();
+    return getBit()->getID();
 }
 
 std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Add(const Variable& v) const {

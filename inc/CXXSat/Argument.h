@@ -42,6 +42,12 @@ public:
     int getID() const;
     bool solution(const Solution&) const;
     void print(std::ostream&, const Solution&) const;
+    std::shared_ptr<Circuit::Input>& getInput() {
+        return getInputs().at(0);
+    }
+    const std::shared_ptr<Circuit::Input>& getInput() const {
+        return getInputs().at(0);
+    }
 };
 
 template <bool Signed, unsigned N>

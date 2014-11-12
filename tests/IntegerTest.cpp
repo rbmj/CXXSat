@@ -7,14 +7,10 @@
 
 int main() {
     auto c = Circuit();
-    auto arg = c.addArgument<UIntArg32>();
+    auto arg = c.addArgument<IntArg32>();
     auto x = arg->asValue();
-    auto a = c.getLiteral<UIntVar32>(0x1234);
-    auto y = a * x;
-    auto z = y / a;
-    //auto key = c.getLiteral<UIntVar32>(0x12345678);
-    //auto y = x ^ key;
-    auto val = c.getLiteral<UIntVar32>(0x1337);
+    auto z = IntVar32::Ternary((x == 5), x, x - x);
+    auto val = c.getLiteral<IntVar32>(5);
     auto p = c.generateCNF(z == val);
     std::cout << "CNF generated\n";
     auto soln = p.solve();

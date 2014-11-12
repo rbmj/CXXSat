@@ -203,6 +203,9 @@ public:
     std::shared_ptr<Wire> source() const {
         return _source;
     }
+    const std::weak_ptr<Circuit::impl>& getCircuit() const {
+        return _source->getCircuit();
+    }
     ~Value() {
         _source->disconnect(this);
     }
@@ -240,24 +243,5 @@ private:
 protected:
     std::weak_ptr<Wire> out_wire;
 };
-
-//capital first letters to not conflict with reserved words (and, or).
-//all are cap for consistency
-std::shared_ptr<Circuit::Value> And(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Nand(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Or(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Nor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Xor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Xnor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Not(std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> MultiAnd(const std::vector<std::shared_ptr<Circuit::Value>>&);
-std::shared_ptr<Circuit::Value> MultiOr(const std::vector<std::shared_ptr<Circuit::Value>>&);
-
-typedef std::pair<std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>> AdderResT;
-AdderResT FullAdder(
-        std::shared_ptr<Circuit::Value> a,
-        std::shared_ptr<Circuit::Value> b,
-        std::shared_ptr<Circuit::Value> carry);
-
 
 #endif
