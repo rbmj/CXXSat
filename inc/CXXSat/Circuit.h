@@ -43,7 +43,6 @@ public:
 private:
     //needs to be a shared_ptr in order to use weak_ptr<> (sad face)
     std::shared_ptr<impl> pimpl;
-    void pimpl_emplace_argument(std::shared_ptr<Argument>);
     const std::weak_ptr<impl>& pimpl_get_self() const;
     void number() const;
 public:
@@ -52,13 +51,12 @@ public:
     std::shared_ptr<T> addArgument(Args&&... args) {
         auto ptr = std::make_shared<T>(
                 pimpl_get_self(), std::forward<Args>(args)...);
-        pimpl_emplace_argument(ptr);
         return ptr;
     }
-    static std::shared_ptr<Value> getLiteralTrue(const std::weak_ptr<Circuit::impl>&);
-    static std::shared_ptr<Value> getLiteralFalse(const std::weak_ptr<Circuit::impl>&);
-    std::shared_ptr<Value> getLiteralTrue() const;
-    std::shared_ptr<Value> getLiteralFalse() const;
+    static Value getLiteralTrue(const std::weak_ptr<Circuit::impl>&);
+    static Value getLiteralFalse(const std::weak_ptr<Circuit::impl>&);
+    Value getLiteralTrue() const;
+    Value getLiteralFalse() const;
     BitVar getLiteral(bool) const;
     template <class T>
     T getLiteral(typename T::int_type t) const {
@@ -118,10 +116,11 @@ public:
     explicit Wire(const std::shared_ptr<Node>& n);
     ~Wire();
     int ID() { return id; }
-    void connect(Node* n) {
-        to.push_back(n);
+    void connect(const Node* n) {
+        //EVIL!
+        to.push_back(const_cast<Node*>(n));
     }
-    void disconnect(Node* n) {
+    void disconnect(const Node* n) {
         auto it = std::find(to.begin(), to.end(), n);
         assert(it != to.end());
         to.erase(it);
@@ -175,12 +174,17 @@ private:
 
 class Circuit::Value : public Circuit::Node {
 public:
+    Value() : Node({}, NODE_TYPE::VALUE) {}
     Value(const Value& v) 
         : Node(v.circuit, NODE_TYPE::VALUE), _source(v._source)
     {
         _source->connect(this);
     }
-    Value(Value&& v) = delete;
+    Value(Value&& v) : Node(v.circuit, NODE_TYPE::VALUE) {
+        std::swap(v._source, _source);
+        _source->disconnect(&v);
+        _source->connect(this);
+    }
     explicit Value(const Input& i) 
         : Node(i.getCircuit(), NODE_TYPE::VALUE), _source(i.getWire())
     {
@@ -190,6 +194,30 @@ public:
         : Node(w->getCircuit(), NODE_TYPE::VALUE), _source(w)
     {
         _source->connect(this);
+    }
+    Value& operator=(const Value& v) {
+        if (_source) {
+            _source->disconnect(this);
+        }
+        circuit = v.circuit;
+        _source = v._source;
+        if (_source) {
+            _source->connect(this);
+        }
+        return *this;
+    }
+    Value& operator=(Value&& v) {
+        if (_source) {
+            _source->disconnect(this);
+            _source.reset();
+        }
+        circuit = v.circuit;
+        std::swap(_source, v._source);
+        if (_source) {
+            _source->connect(this);
+            _source->disconnect(&v);
+        }
+        return *this;
     }
     static std::shared_ptr<Value> create(const std::shared_ptr<Value>& v) {
         return std::make_shared<Value>(*v);
@@ -203,11 +231,8 @@ public:
     std::shared_ptr<Wire> source() const {
         return _source;
     }
-    const std::weak_ptr<Circuit::impl>& getCircuit() const {
-        return _source->getCircuit();
-    }
     ~Value() {
-        _source->disconnect(this);
+        if (_source) _source->disconnect(this);
     }
     int getID() const {
         return _source->ID();

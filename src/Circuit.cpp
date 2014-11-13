@@ -9,12 +9,14 @@ struct Circuit::impl {
     void unreg(Input* i) {
         inputs.erase(inputs.find(i));
     }
+    /*
     void reg(Value* v) {
         outputs.insert(v);
     }
     void unreg(Value* v) {
         outputs.erase(outputs.find(v));
     }
+    */
     void reg(Gate* g) {
         gates.insert(g);
     }
@@ -30,11 +32,9 @@ struct Circuit::impl {
     std::shared_ptr<Input> lit0;
     std::shared_ptr<Input> lit1;
     std::unordered_set<Input*> inputs;
-    std::unordered_set<Value*> outputs;
+    //std::unordered_set<Value*> outputs;
     std::unordered_set<Gate*> gates;
     std::unordered_set<Wire*> wires;
-    std::shared_ptr<Value> final_output;
-    std::unordered_set<std::shared_ptr<Argument>> arguments;
     std::weak_ptr<Circuit::impl> self;
 };
 
@@ -49,13 +49,9 @@ const std::weak_ptr<Circuit::impl>& Circuit::pimpl_get_self() const {
     return pimpl->self;
 }
 
-void Circuit::pimpl_emplace_argument(std::shared_ptr<Argument> ptr) {
-    pimpl->arguments.emplace(std::move(ptr));
-}
-
 Problem Circuit::generateCNF(BitVar b) const {
     auto cnf = generateCNF();
-    cnf.addClause({b.getBit()->getID()});
+    cnf.addClause({b.getBit().getID()});
     return std::move(cnf);
 }
 
@@ -82,30 +78,27 @@ Problem Circuit::generateCNF() const {
     if (pimpl->lit1->referenced()) {
         p.addClause({pimpl->lit1->getID()});
     }
-    if (pimpl->final_output) {
-        p.addClause({pimpl->final_output->getID()});
-    }
     return std::move(p);
 }
 
-std::shared_ptr<Circuit::Value> Circuit::getLiteralTrue(const std::weak_ptr<Circuit::impl>& c) {
+Circuit::Value Circuit::getLiteralTrue(const std::weak_ptr<Circuit::impl>& c) {
     auto pimpl = c.lock();
     assert(pimpl);
-    return std::make_shared<Value>(*(pimpl->lit1));
+    return Circuit::Value(*(pimpl->lit1));
 }
 
-std::shared_ptr<Circuit::Value> Circuit::getLiteralFalse(const std::weak_ptr<Circuit::impl>& c) {
+Circuit::Value Circuit::getLiteralFalse(const std::weak_ptr<Circuit::impl>& c) {
     auto pimpl = c.lock();
     assert(pimpl);
-    return std::make_shared<Value>(*(pimpl->lit0));
+    return Circuit::Value(*(pimpl->lit0));
 }
 
-std::shared_ptr<Circuit::Value> Circuit::getLiteralTrue() const {
-    return std::make_shared<Value>(*(pimpl->lit1));
+Circuit::Value Circuit::getLiteralTrue() const {
+    return Circuit::Value(*(pimpl->lit1));
 }
 
-std::shared_ptr<Circuit::Value> Circuit::getLiteralFalse() const {
-    return std::make_shared<Value>(*(pimpl->lit0));
+Circuit::Value Circuit::getLiteralFalse() const {
+    return Circuit::Value(*(pimpl->lit0));
 }
 
 Circuit::Node::Node(const std::weak_ptr<Circuit::impl>& c, Node::NODE_TYPE t)
@@ -117,7 +110,9 @@ Circuit::Node::Node(const std::weak_ptr<Circuit::impl>& c, Node::NODE_TYPE t)
                 ptr->reg(asInput());
                 break;
             case NODE_TYPE::VALUE:
+                /* don't register
                 ptr->reg(asValue());
+                */
                 break;
             case NODE_TYPE::GATE:
                 ptr->reg(asGate());
@@ -136,7 +131,9 @@ Circuit::Node::~Node() {
                 ptr->unreg(asInput());
                 break;
             case NODE_TYPE::VALUE:
+                /*
                 ptr->unreg(asValue());
+                */
                 break;
             case NODE_TYPE::GATE:
                 ptr->unreg(asGate());

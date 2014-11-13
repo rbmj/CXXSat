@@ -10,10 +10,6 @@
 #include <memory>
 #include <vector>
 
-typedef std::shared_ptr<Circuit::Value> value_ptr;
-typedef std::vector<value_ptr> BitVector;
-extern template class std::vector<value_ptr>;
-
 class BitVar;
 class DynVar;
 
@@ -111,7 +107,7 @@ public:
         return (Type == 0) ? 1 : (unsigned)(
                 (Type < 0) ? -Type : Type);
     }
-    typedef std::array<value_ptr, numBits()> BitArr;
+    typedef std::array<Circuit::Value, numBits()> BitArr;
     template <class... Args>
     Base_base(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
         Variable(c, Type), bits(std::forward<Args>(args)...) {}
@@ -216,9 +212,10 @@ public:
     typedef bool int_type;
     BitVar(const BitArgument&);
     BitVar(const BitVar&);
-    explicit BitVar(const value_ptr&);
+    explicit BitVar(const Circuit::Value&);
     BitVar(bool, const std::weak_ptr<Circuit::impl>&);
-    value_ptr getBit() const;
+    Circuit::Value& getBit();
+    const Circuit::Value& getBit() const;
     static BitVar Not(const BitVar&);
     static BitVar And(const BitVar&, const BitVar&);
     static BitVar Nand(const BitVar&, const BitVar&);
@@ -342,7 +339,7 @@ public:
     }
     static this_t generateMask(const BitVar&);
     static this_t Ternary(const BitVar&, const this_t&, const this_t&);
-    static this_t Ternary(const value_ptr& a, const this_t& b, const this_t& c) {
+    static this_t Ternary(const Circuit::Value& a, const this_t& b, const this_t& c) {
         return Ternary(BitVar(a), b, c); //not optimal, but w/e
     }
     static void DivRem(const this_t&, const this_t&, this_t*, this_t*);
@@ -491,7 +488,7 @@ private:
     template <class Op>
     void variadic_transform(const std::vector<this_t>&, Op);
     static this_t do_addition(const this_t&, const this_t&, bool, 
-            value_ptr* = nullptr);
+            Circuit::Value* = nullptr);
     static void divrem_unsigned(const this_t&, const this_t&, this_t*, this_t*);
     template <unsigned X = N>
     static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
@@ -504,19 +501,19 @@ private:
 template <bool Signed, unsigned N>
 IntVar<Signed, N>::IntVar(const arg_t& arg) : 
     Base(arg.getCircuit(), make_array<N>([&arg](std::size_t i) {
-                return Circuit::Value::create(arg.getInputs().at(i));
+                return Circuit::Value(*(arg.getInputs().at(i)));
     })) {}
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N>::IntVar(const this_t& var) : 
     Base(var.getCircuit(), make_array<N>([&var](std::size_t i) {
-                return var.getBits()[i]->clone();
+                return var.getBits()[i];
     })) {}
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N>::IntVar(const BitVar& bit) : 
     Base(bit.getCircuit(), make_array<N>([this, &bit](std::size_t i) {
-                return (i == 0) ? bit.getBit()->clone() : Circuit::getLiteralFalse(this->getCircuit());
+                return (i == 0) ? bit.getBit() : Circuit::getLiteralFalse(this->getCircuit());
     })) {}
 
 template <bool Signed, unsigned N>
@@ -528,12 +525,7 @@ IntVar<Signed, N>::IntVar(int_type t, const std::weak_ptr<Circuit::impl>& c) :
 template <bool Signed, unsigned N>
 IntVar<Signed, N>& IntVar<Signed, N>::operator=(const this_t& other) {
     //TODO:  Assert circuits equal for all these
-    const auto& b_other = other.getBits();
-    auto& b = this->getBits();
-    std::transform(begin(b_other), end(b_other), begin(b),
-            [](const value_ptr& v) {
-                return v->clone();
-            });
+    this->getBits() = other.getBits();
     return *this;
 }
 
@@ -541,7 +533,7 @@ template <bool Signed, unsigned N>
 IntVar<Signed, N> IntVar<Signed, N>::generateMask(const BitVar& b) {
     this_t x(b.getCircuit());
     for (auto& bit : x.getBits()) {
-        bit = b.getBit()->clone();
+        bit = b.getBit();
     }
     return std::move(x);
 }
@@ -552,7 +544,7 @@ IntVar<Signed, N> IntVar<Signed, N>::Not(const this_t& a) {
     auto& bits = x.getBits();
     const auto& otherbits = a.getBits();
     std::transform(begin(otherbits), end(otherbits), begin(bits),
-        [](const value_ptr& v) {
+        [](const Circuit::Value& v) {
             return ::Not(v);
         }
     );
@@ -589,7 +581,7 @@ BitVar IntVar<Signed, N>::NotEq(const this_t& a, const this_t& b) {
 
 template <bool Signed, unsigned N>
 BitVar IntVar<Signed, N>::Less(const this_t& a, const this_t& b) {
-    value_ptr carry_out;
+    Circuit::Value carry_out;
     //subtract *this - t, get the carry
     auto comparison = do_addition(a, ~b, true, &carry_out);
     if (Signed) {
@@ -632,7 +624,7 @@ template <bool Signed, unsigned N>
 template <class Op>
 void IntVar<Signed, N>::variadic_transform(const std::vector<this_t>& vec, Op op) {
     unsigned num = vec.size();
-    std::vector<value_ptr> values(num);
+    std::vector<Circuit::Value> values(num);
     auto& bits = this->getBits();
     for (unsigned i = 0; i < N; ++i) {
         for (unsigned j = 0; j < num; ++j) {
@@ -647,7 +639,7 @@ void IntVar<Signed, N>::variadic_transform(const std::vector<this_t>& vec, Op op
     template <bool Signed, unsigned N> \
     IntVar<Signed, N> IntVar<Signed, N>::name(const this_t& a, const this_t& b) { \
         this_t x(a.getCircuit()); \
-        x.binary_transform(a, b, [](const value_ptr& y, const value_ptr& z) { \
+        x.binary_transform(a, b, [](const Circuit::Value& y, const Circuit::Value& z) { \
             return ::name(y, z); \
         }); \
         return std::move(x); \
@@ -665,14 +657,14 @@ DEFINE_BINARY_OP(Xnor);
 template <bool Signed, unsigned N>
 IntVar<Signed, N> IntVar<Signed, N>::MultiAnd(const std::vector<this_t>& vec) {
     this_t x(vec.at(0).getCircuit());
-    x.variadic_transform(vec, ::MultiAnd<std::vector<value_ptr>>);
+    x.variadic_transform(vec, ::MultiAnd<std::vector<Circuit::Value>>);
     return std::move(x);
 }
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N> IntVar<Signed, N>::MultiOr(const std::vector<this_t>& vec) {
     this_t x(vec.at(0).getCircuit());
-    x.variadic_transform(vec, ::MultiOr<std::vector<value_ptr>>);
+    x.variadic_transform(vec, ::MultiOr<std::vector<Circuit::Value>>);
     return std::move(x);
 }
 
@@ -699,7 +691,7 @@ IntVar<Signed, N> IntVar<Signed, N>::mask_all(const this_t& a, const BitVar& b) 
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& b, bool c, value_ptr* carry_out) {
+IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& b, bool c, Circuit::Value* carry_out) {
     auto carry = c ? Circuit::getLiteralTrue(a.getCircuit()) 
         : Circuit::getLiteralFalse(a.getCircuit());
     this_t ret(a.getCircuit());
@@ -726,7 +718,7 @@ IntVar<Signed, N> IntVar<Signed, N>::Shl(const this_t& t, unsigned n) {
         bits[i] = Circuit::getLiteralFalse(t.getCircuit());
     }
     for (; i < N; ++i) {
-        bits[i] = t_bits[i - n]->clone();
+        bits[i] = t_bits[i - n];
     }
     return std::move(ret);
 }
@@ -751,14 +743,14 @@ IntVar<Signed, N> IntVar<Signed, N>::Shr(const this_t& t, unsigned n) {
     unsigned i = 0;
     for (; i < n; ++i) {
         if (Signed) {
-            bits[(N - 1) - i] = t_bits[N - 1]->clone();
+            bits[(N - 1) - i] = t_bits[N - 1];
         }
         else {
             bits[(N - 1) - i] = Circuit::getLiteralFalse(t.getCircuit());
         }
     }
     for (; i < N; ++i) {
-        bits[(N - 1) - i] = t_bits[(N - 1) - (i - n)]->clone();
+        bits[(N - 1) - i] = t_bits[(N - 1) - (i - n)];
     }
     return std::move(ret);
 }
@@ -813,7 +805,7 @@ void IntVar<Signed, N>::divrem_unsigned(const this_t& val, const this_t& div,
         r <<= 1;
         r.getBits()[0] = val.getBits()[N - 1 - i];
         auto should_sub = r >= div;
-        q.getBits()[N - 1 - i] = should_sub.getBit()->clone();
+        q.getBits()[N - 1 - i] = should_sub.getBit();
         r = Ternary(should_sub, r - div, r);
     }
     if (quot) {
@@ -855,17 +847,17 @@ IntVar<NewSigned, NewN> IntVar<Signed, N>::cast() const {
     IntVar<NewSigned, NewN> ret{this->getCircuit()};
     if (NewN < N) {
         for (unsigned i = 0; i < NewN; ++i) {
-            ret.getBits()[i] = this->getBits()[i]->clone();
+            ret.getBits()[i] = this->getBits()[i];
         }
     }
     else {
         unsigned i;
         for (i = 0; i < N; ++i) {
-            ret.getBits()[i] = this->getBits()[i]->clone();
+            ret.getBits()[i] = this->getBits()[i];
         }
         for (; i < NewN; ++i) {
             if (Signed) {
-                ret.getBits()[i] = this->getBits()[N-1]->clone();
+                ret.getBits()[i] = this->getBits()[N-1];
             }
             else {
                 ret.getBits()[i] = Circuit::getLiteralFalse(this->getCircuit());

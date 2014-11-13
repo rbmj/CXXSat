@@ -114,11 +114,11 @@ public:
     */
     template <class Container>
     MultiGate(const Container& args)
-        : Circuit::GateBase<DerivedGate>((*(begin(args)))->getCircuit())
+        : Circuit::GateBase<DerivedGate>(begin(args)->getCircuit())
     {
         std::transform(begin(args), end(args), std::inserter(inputs, begin(inputs)),
-            [](const std::shared_ptr<Circuit::Value>& v) {
-                return v->source();
+            [](const Circuit::Value& v) {
+                return v.source();
             }
         );
         for (auto& i : inputs) {
@@ -148,28 +148,28 @@ DECLARE_MULTI_GATE(MultiOrGate);
 
 //capital first letters to not conflict with reserved words (and, or).
 //all are cap for consistency
-std::shared_ptr<Circuit::Value> And(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Nand(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Or(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Nor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Xor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Xnor(std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>);
-std::shared_ptr<Circuit::Value> Not(std::shared_ptr<Circuit::Value>);
+Circuit::Value And(Circuit::Value, Circuit::Value);
+Circuit::Value Nand(Circuit::Value, Circuit::Value);
+Circuit::Value Or(Circuit::Value, Circuit::Value);
+Circuit::Value Nor(Circuit::Value, Circuit::Value);
+Circuit::Value Xor(Circuit::Value, Circuit::Value);
+Circuit::Value Xnor(Circuit::Value, Circuit::Value);
+Circuit::Value Not(Circuit::Value);
 
 template <class Container>
-std::shared_ptr<Circuit::Value> MultiAnd(const Container& values) {
-    return std::make_shared<Circuit::Value>(MultiAndGate::create(values));
+Circuit::Value MultiAnd(const Container& values) {
+    return Circuit::Value{MultiAndGate::create(values)};
 }
 
 template <class Container>
-std::shared_ptr<Circuit::Value> MultiOr(const Container& values) {
-    return std::make_shared<Circuit::Value>(MultiOrGate::create(values));
+Circuit::Value MultiOr(const Container& values) {
+    return Circuit::Value{MultiOrGate::create(values)};
 }
 
-typedef std::pair<std::shared_ptr<Circuit::Value>, std::shared_ptr<Circuit::Value>> AdderResT;
+typedef std::pair<Circuit::Value, Circuit::Value> AdderResT;
 AdderResT FullAdder(
-        std::shared_ptr<Circuit::Value> a,
-        std::shared_ptr<Circuit::Value> b,
-        std::shared_ptr<Circuit::Value> carry);
+        Circuit::Value a,
+        Circuit::Value b,
+        Circuit::Value carry);
 
 #endif

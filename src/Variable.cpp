@@ -5,7 +5,6 @@
 #define CALL_MEMBER(obj, fun) ((obj).*(fun))
 
 //explicit instantiation
-template class std::vector<std::shared_ptr<Circuit::Value>>;
 template class IntVar<true, 8>;
 template class IntVar<false, 8>;
 template class IntVar<true, 16>;
@@ -25,22 +24,26 @@ std::unique_ptr<Variable> Variable::LogOr(const Variable& a, const Variable& b) 
 
 BitVar::BitVar(const std::weak_ptr<Circuit::impl>& c) : Base(c) {}
 
-BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit(), BitArr{{Circuit::Value::create(arg.getInput())}}) {}
+BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit(), BitArr{{Circuit::Value(*(arg.getInput()))}}) {}
 
-BitVar::BitVar(const BitVar& v) : Base(v.getCircuit(), BitArr{{v.getBit()->clone()}}) {}
+BitVar::BitVar(const BitVar& v) : Base(v.getCircuit(), BitArr{{v.getBit()}}) {}
 
-BitVar::BitVar(const std::shared_ptr<Circuit::Value>& v) : Base(v->getCircuit(), BitArr{{v->clone()}}) {}
+BitVar::BitVar(const Circuit::Value& v) : Base(v.getCircuit(), BitArr{{v}}) {}
 
 BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c, BitArr{{b ?
         Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c)}}) {}
 
-value_ptr BitVar::getBit() const {
+Circuit::Value& BitVar::getBit() {
+    return getBits().at(0);
+}
+
+const Circuit::Value& BitVar::getBit() const {
     return getBits().at(0);
 }
 
 BitVar& BitVar::operator=(const BitVar& v) {
     //TODO:  Assert circuits equal
-    getBit() = v.getBit()->clone();
+    getBit() = v.getBit();
     return *this;
 }
 
@@ -69,7 +72,7 @@ BitVar BitVar::Xnor(const BitVar& a, const BitVar& b) {
 }
 
 BitVar BitVar::MultiAnd(const std::vector<BitVar>& vec) {
-    std::vector<value_ptr> values;
+    std::vector<Circuit::Value> values;
     for (auto& var : vec) {
         values.push_back(var.getBit());
     }
@@ -77,7 +80,7 @@ BitVar BitVar::MultiAnd(const std::vector<BitVar>& vec) {
 }
 
 BitVar BitVar::MultiOr(const std::vector<BitVar>& vec) {
-    std::vector<value_ptr> values;
+    std::vector<Circuit::Value> values;
     for (auto& var : vec) {
         values.push_back(var.getBit());
     }
@@ -85,7 +88,7 @@ BitVar BitVar::MultiOr(const std::vector<BitVar>& vec) {
 }
 
 int BitVar::getID() const {
-    return getBit()->getID();
+    return getBit().getID();
 }
 
 std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Add(const Variable& v) const {
