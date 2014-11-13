@@ -10,7 +10,7 @@ public:
     template <class... Args>
     static std::shared_ptr<Circuit::Wire> create(Args&&... args) {
         auto dg = std::make_shared<DerivedGate>(std::forward<Args>(args)...);
-        auto wire = std::make_shared<Wire>(dg);
+        auto wire = std::make_shared<BasicWire>(dg);
         dg->init(wire);
         return wire;
     }
@@ -21,18 +21,20 @@ protected:
 
 class NotGate : public Circuit::GateBase<NotGate> {
     friend class Circuit::GateBase<NotGate>;
+    friend class Circuit::InvertingWire;
 public:
     ~NotGate() {
-        a->disconnect(this);
+        source->disconnect(this);
     }
+    static std::shared_ptr<Circuit::Wire> create(const Circuit::Value&);
     void emplaceCNF(Problem& p);
     //DO NOT USE:
     NotGate(const Circuit::Value& _a) : GateBase<NotGate>(_a.getCircuit()) {
-        a = _a.source();
-        a->connect(this);
+        source = _a.source();
+        source->connect(this);
     }
 private:
-    std::shared_ptr<Circuit::Wire> a;
+    std::shared_ptr<Circuit::Wire> source;
 };
 
 static inline bool circuitsEqual(const std::weak_ptr<Circuit::impl>& a,
@@ -148,13 +150,13 @@ DECLARE_MULTI_GATE(MultiOrGate);
 
 //capital first letters to not conflict with reserved words (and, or).
 //all are cap for consistency
-Circuit::Value And(Circuit::Value, Circuit::Value);
-Circuit::Value Nand(Circuit::Value, Circuit::Value);
-Circuit::Value Or(Circuit::Value, Circuit::Value);
-Circuit::Value Nor(Circuit::Value, Circuit::Value);
-Circuit::Value Xor(Circuit::Value, Circuit::Value);
-Circuit::Value Xnor(Circuit::Value, Circuit::Value);
-Circuit::Value Not(Circuit::Value);
+Circuit::Value And(const Circuit::Value&, const Circuit::Value&);
+Circuit::Value Nand(const Circuit::Value&, const Circuit::Value&);
+Circuit::Value Or(const Circuit::Value&, const Circuit::Value&);
+Circuit::Value Nor(const Circuit::Value&, const Circuit::Value&);
+Circuit::Value Xor(const Circuit::Value&, const Circuit::Value&);
+Circuit::Value Xnor(const Circuit::Value&, const Circuit::Value&);
+Circuit::Value Not(const Circuit::Value&);
 
 template <class Container>
 Circuit::Value MultiAnd(const Container& values) {
@@ -168,8 +170,8 @@ Circuit::Value MultiOr(const Container& values) {
 
 typedef std::pair<Circuit::Value, Circuit::Value> AdderResT;
 AdderResT FullAdder(
-        Circuit::Value a,
-        Circuit::Value b,
-        Circuit::Value carry);
+        const Circuit::Value& a,
+        const Circuit::Value& b,
+        const Circuit::Value& carry);
 
 #endif

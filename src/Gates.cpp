@@ -3,10 +3,19 @@
 // From http://en.wikipedia.org/wiki/Tseitin_transformation
 
 void NotGate::emplaceCNF(Problem& p) {
-    auto A = a->ID();
+    /*
+    auto A = source->ID();
     auto C = getWire()->ID();
     p.addClause({-A, -C});
     p.addClause({A, C});
+    */
+}
+
+std::shared_ptr<Circuit::Wire> NotGate::create(const Circuit::Value& val) {
+    auto gate = std::make_shared<NotGate>(val);
+    auto wire = std::make_shared<Circuit::InvertingWire>(gate);
+    gate->init(wire);
+    return std::move(wire);
 }
 
 void AndGate::emplaceCNF(Problem& p) {
@@ -89,38 +98,38 @@ void MultiOrGate::emplaceCNF(Problem& p) {
     p.addClause(c);
 }
 
-Circuit::Value And(Circuit::Value a, Circuit::Value b) {
+Circuit::Value And(const Circuit::Value& a, const Circuit::Value& b) {
     return Circuit::Value{AndGate::create(a, b)};
 }
 
-Circuit::Value Nand(Circuit::Value a, Circuit::Value b) {
+Circuit::Value Nand(const Circuit::Value& a, const Circuit::Value& b) {
     return Circuit::Value{NandGate::create(a, b)};
 }
 
-Circuit::Value Or(Circuit::Value a, Circuit::Value b) {
+Circuit::Value Or(const Circuit::Value& a, const Circuit::Value& b) {
     return Circuit::Value{OrGate::create(a, b)};
 }
 
-Circuit::Value Nor(Circuit::Value a, Circuit::Value b) {
+Circuit::Value Nor(const Circuit::Value& a, const Circuit::Value& b) {
     return Circuit::Value{NorGate::create(a, b)};
 }
 
-Circuit::Value Xor(Circuit::Value a, Circuit::Value b) {
+Circuit::Value Xor(const Circuit::Value& a, const Circuit::Value& b) {
     return Circuit::Value{XorGate::create(a, b)};
 }
 
-Circuit::Value Xnor(Circuit::Value a, Circuit::Value b) {
+Circuit::Value Xnor(const Circuit::Value& a, const Circuit::Value& b) {
     return Circuit::Value{XnorGate::create(a, b)};
 }
 
-Circuit::Value Not(Circuit::Value a) {
+Circuit::Value Not(const Circuit::Value& a) {
     return Circuit::Value{NotGate::create(a)};
 }
 
 AdderResT FullAdder(
-        Circuit::Value a,
-        Circuit::Value b,
-        Circuit::Value carry)
+        const Circuit::Value& a,
+        const Circuit::Value& b,
+        const Circuit::Value& carry)
 {
     auto half_sum = Xor(a, b);
     return {

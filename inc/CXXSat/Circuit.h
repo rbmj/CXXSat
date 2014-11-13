@@ -37,6 +37,8 @@ public:
     class Input;
     class Value;
     class Gate;
+    class BasicWire;
+    class InvertingWire;
     template <class T>
     class GateBase;
     //public for convenience, but is incomplete, so no problems
@@ -116,8 +118,8 @@ class Circuit::Wire {
     friend class Circuit;
 public:
     explicit Wire(const std::shared_ptr<Node>& n);
-    ~Wire();
-    int ID() { return id; }
+    virtual ~Wire();
+    virtual int ID() const = 0;
     void connect(const Node* n) {
         //EVIL!
         to.push_back(const_cast<Node*>(n));
@@ -133,11 +135,34 @@ public:
     void swapSource(std::shared_ptr<Node>& p) {
         std::swap(from, p);
     }
-private:
+protected:
     std::shared_ptr<Node> from;
     std::vector<Node*> to;
     std::weak_ptr<Circuit::impl> c;
+    virtual bool setID(int) = 0;
+};
+
+class Circuit::BasicWire : public Circuit::Wire {
+public:
+    using Circuit::Wire::Wire;
+    int ID() const {
+        return id;
+    }
+    bool setID(int x) {
+        id = x;
+        return true;
+    }
+private:
     int id;
+};
+
+class Circuit::InvertingWire : public Circuit::Wire {
+public:
+    using Circuit::Wire::Wire;
+    int ID() const;
+    bool setID(int) {
+        return false;
+    }
 };
 
 class Circuit::Input : public Circuit::Node {
@@ -157,7 +182,7 @@ public:
         else {
             auto ptr = self.lock();
             assert(ptr);
-            auto ret = std::make_shared<Wire>(ptr);
+            auto ret = std::make_shared<BasicWire>(ptr);
             out_wire = ret;
             initialized = true;
             return ret;
@@ -264,11 +289,11 @@ public:
 private:
     explicit Gate(const std::weak_ptr<Circuit::impl>& c)
         : Node(c, NODE_TYPE::GATE) {}
+protected:
+    std::weak_ptr<Wire> out_wire;
     void init(std::weak_ptr<Wire> w) {
         out_wire = w;
     }
-protected:
-    std::weak_ptr<Wire> out_wire;
 };
 
 #endif

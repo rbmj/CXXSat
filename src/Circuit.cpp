@@ -60,9 +60,9 @@ Problem Circuit::generateCNF(const DynVar& d) const {
 }
 
 void Circuit::number() const {
-    int i = 0;
+    int i = 1;
     for (auto& wire : pimpl->wires) {
-        wire->id = ++i;
+        if (wire->setID(i)) ++i;
     }
 }
 
@@ -150,7 +150,7 @@ Circuit::Node::~Node() {
 }
 
 Circuit::Wire::Wire(const std::shared_ptr<Node>& n) 
-    : from(n), c(n->getCircuit()), id(0) 
+    : from(n), c(n->getCircuit()) 
 {
     if (auto circuit = c.lock()) {
         circuit->reg(this);
@@ -161,4 +161,8 @@ Circuit::Wire::~Wire() {
     if (auto circuit = c.lock()) {
         circuit->unreg(this);
     }
+}
+
+int Circuit::InvertingWire::ID() const {
+    return -(((NotGate&)(*from)).source->ID());
 }
