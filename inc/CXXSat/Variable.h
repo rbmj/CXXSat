@@ -47,8 +47,25 @@ private:
     virtual var_ptr Mul(const Variable&) const = 0;
     virtual var_ptr Shr(const Variable&) const = 0;
     virtual var_ptr Shl(const Variable&) const = 0;
+    virtual var_ptr Less(const Variable&) const = 0;
+    virtual var_ptr Equal(const Variable&) const = 0;
     virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const = 0;
     //end operations
+    //pseudo-operations, implemented in terms of actual operaitons
+    var_ptr LogAnd(const Variable&, const Variable&);
+    var_ptr LogOr(const Variable&, const Variable&);
+    var_ptr Greater(const Variable& a) const {
+        return GreaterEq(a)->And(*(Equal(a)->Not()));
+    }
+    var_ptr LessEq(const Variable& a) const {
+        return Less(a)->Or(*(Equal(a)));
+    }
+    var_ptr GreaterEq(const Variable& a) const {
+        return Less(a)->Not();
+    }
+    var_ptr NotEqual(const Variable& a) const {
+        return Equal(a)->Not();
+    }
     var_ptr Div(const Variable& v) const {
         var_ptr ret;
         DivMod(v, &ret, nullptr);
@@ -152,6 +169,12 @@ class Variable::Base : public Variable::Base_base<Derived, Type> {
     virtual var_ptr Neg() const {
         return Derived::Not(CAST(*this)).clone();
     }
+    virtual var_ptr Less(const Variable& v) const {
+        return Derived::Less(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Equal(const Variable& v) const {
+        return Derived::Equal(CAST(*this), CAST(v)).clone();
+    }
     virtual void DivMod(const Variable& d, var_ptr* qp, var_ptr* rp) const {
         Derived q(this->getCircuit());
         Derived r(this->getCircuit());
@@ -172,6 +195,8 @@ class Variable::Base<BitVar, 0> : public Variable::Base_base<BitVar, 0> {
     virtual var_ptr Mul(const Variable&) const;
     virtual var_ptr Shr(const Variable&) const;
     virtual var_ptr Shl(const Variable&) const;
+    virtual var_ptr Less(const Variable&) const;
+    virtual var_ptr Equal(const Variable&) const;
     virtual var_ptr Neg() const;
     virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const;
     std::unique_ptr<Variable> do_cast(int) const;
@@ -224,6 +249,12 @@ public:
     }
     BitVar operator&(const BitVar& v) const {
         return And(*this, v);
+    }
+    BitVar operator&&(const BitVar& v) const {
+        return And(*this, v);
+    }
+    BitVar operator||(const BitVar& v) const {
+        return Or(*this, v);
     }
     BitVar operator|(const BitVar& v) const {
         return Or(*this, v);
@@ -283,6 +314,20 @@ public:
     static this_t Shl(const this_t&, const this_t&);
     static this_t Shr(const this_t&, unsigned);
     static this_t Shr(const this_t&, const this_t&);
+    static BitVar Less(const this_t&, const this_t&);
+    static BitVar Greater(const this_t&, const this_t&);
+    static BitVar LessEq(const this_t&, const this_t&);
+    static BitVar GreaterEq(const this_t&, const this_t&);
+    static BitVar Equal(const this_t&, const this_t&);
+    static BitVar Equal(const this_t&, int_type);
+    static BitVar NotEq(const this_t&, const this_t&);
+    static BitVar NotEq(const this_t&, int_type);
+    static BitVar LogAnd(const this_t& a, const this_t& b) {
+        return !(a.isZero()) & !(b.isZero());
+    }
+    static BitVar LogOr(const this_t& a, const this_t& b) {
+        return !(a.isZero()) | !(b.isZero());
+    }
     template <unsigned X = N>
     static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
     ::type Mul_full(const this_t&, const this_t&);
@@ -394,37 +439,37 @@ public:
         return std::move(x);
     }
     BitVar operator==(const this_t& v) const {
-        const auto& i = Xnor(*this, v);
-        return BitVar(::MultiAnd(i.getBits()));
+        return Equal(*this, v);
     }
     BitVar operator==(int_type n) const {
-        this_t x = *this;
-        auto& bits = x.getBits();
-        for (unsigned i = 0; i < N; ++i) {
-            if (!((n >> i) & 1)) {
-                bits[i] = ::Not(bits[i]);
-            }
-        }
-        return BitVar(::MultiAnd(bits));
+        return Equal(*this, n);
     }
     BitVar isZero() const {
         return BitVar(::MultiOr(this->getBits()));
     }
     BitVar operator!=(int_type n) const {
-        return !(*this == n);
+        return NotEq(*this, n);
     }
     BitVar operator!=(const this_t& v) const {
-        return !(*this == v);
+        return NotEq(*this, v);    
     }
-    BitVar operator<(const this_t& v) const;
+    BitVar operator<(const this_t& v) const {
+        return Less(*this, v);
+    }
     BitVar operator>=(const this_t& v) const {
-        return !(*this < v);
+        return GreaterEq(*this, v);
     }
     BitVar operator<=(const this_t& v) const {
-        return (*this < v) | (*this == v);
+        return LessEq(*this, v);
     }
     BitVar operator>(const this_t& v) const {
-        return !(*this <= v);
+        return Greater(*this, v);
+    }
+    BitVar operator&&(const this_t& a) const {
+        return LogAnd(*this, a);
+    }
+    BitVar operator||(const this_t& a) const {
+        return LogOr(*this, a);
     }
     BitVar isNeg() const {
         if (Signed) {
@@ -513,6 +558,66 @@ IntVar<Signed, N> IntVar<Signed, N>::Not(const this_t& a) {
     );
     return std::move(x);                
 };
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::Equal(const this_t& a, const this_t& b) {
+    const auto& i = Xnor(a, b);
+    return BitVar(::MultiAnd(i.getBits()));
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::Equal(const this_t& a, int_type b) {
+    this_t x(a);
+    auto& bits = x.getBits();
+    for (unsigned i = 0; i < N; ++i) {
+        if (!((b >> i) & 1)) {
+            bits[i] = ::Not(bits[i]);
+        }
+    }
+    return BitVar(::MultiAnd(bits));
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::NotEq(const this_t& a, int_type b) {
+    return !Equal(a, b);
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::NotEq(const this_t& a, const this_t& b) {
+    return !Equal(a, b);
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::Less(const this_t& a, const this_t& b) {
+    value_ptr carry_out;
+    //subtract *this - t, get the carry
+    auto comparison = do_addition(a, ~b, true, &carry_out);
+    if (Signed) {
+        //if signed, have to do a carry computation for the sign bits:
+        auto extra_bit = ::Xor(a.getBits()[N-1], ::Not(b.getBits()[N-1]));
+        return BitVar(::Xor(extra_bit, carry_out));
+    }
+    else {
+        //if unsigned, a carry indicates the result of the subtraction is
+        //positive or zero, so *this >= t
+        return BitVar(::Not(carry_out));
+    }
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::LessEq(const this_t& a, const this_t& b) {
+    return Less(a, b) | Equal(a, b);
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::Greater(const this_t& a, const this_t& b) {
+    return !LessEq(a, b);
+}
+
+template <bool Signed, unsigned N>
+BitVar IntVar<Signed, N>::GreaterEq(const this_t& a, const this_t& b) {
+    return !Less(a, b);
+}
 
 template <bool Signed, unsigned N>
 template <class Op>
@@ -673,23 +778,6 @@ IntVar<Signed, N> IntVar<Signed, N>::Shr(const this_t& t, const this_t& n) {
         integers.push_back(mask_all(this_t((int_type)-1, t.getCircuit()), !(BitVar::MultiOr(bits))));
     }
     return MultiOr(integers);
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::operator<(const this_t& t) const {
-    value_ptr carry_out;
-    //subtract *this - t, get the carry
-    auto comparison = do_addition(*this, ~t, true, &carry_out);
-    if (Signed) {
-        //if signed, have to do a carry computation for the sign bits:
-        auto extra_bit = ::Xor(this->getBits()[N-1], ::Not(t.getBits()[N-1]));
-        return BitVar(::Xor(extra_bit, carry_out));
-    }
-    else {
-        //if unsigned, a carry indicates the result of the subtraction is
-        //positive or zero, so *this >= t
-        return BitVar(::Not(carry_out));
-    }
 }
 
 template <bool Signed, unsigned N>

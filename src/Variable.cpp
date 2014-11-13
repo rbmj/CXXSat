@@ -15,6 +15,14 @@ template class IntVar<false, 32>;
 template class IntVar<true, 64>;
 template class IntVar<false, 64>;
 
+std::unique_ptr<Variable> Variable::LogAnd(const Variable& a, const Variable& b) {
+    return ((const Variable&)(!(a.isZero()) & !(b.isZero()))).clone();
+}
+
+std::unique_ptr<Variable> Variable::LogOr(const Variable& a, const Variable& b) {
+    return ((const Variable&)(!(a.isZero()) | !(b.isZero()))).clone();
+}
+
 BitVar::BitVar(const std::weak_ptr<Circuit::impl>& c) : Base(c) {}
 
 BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit(), BitArr{{Circuit::Value::create(arg.getInput())}}) {}
@@ -102,6 +110,14 @@ std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shl(const Variable& v) cons
 }
 std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Neg() const {
     return (~(IntVar<true, int_size>(CAST(*this)))).clone();
+}
+
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Less(const Variable& v) const {
+    return (!CAST(*this) & CAST(v)).clone();
+}
+
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Equal(const Variable& v) const {
+    return BitVar::Xnor(CAST(*this), CAST(v)).clone();
 }
 
 void Variable::Base<BitVar, 0>::DivMod(const Variable& d, std::unique_ptr<Variable>* qp, var_ptr* rp) const {
