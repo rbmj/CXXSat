@@ -4,15 +4,16 @@
 #include <CXXSat/Variable.h>
 #include <CXXSat/Sat.h>
 
-
 int main() {
     auto c = Circuit();
-    auto arg = c.addArgument<IntArg32>();
+    auto arg = c.addArgument<UIntArg32>();
     auto x = arg->asValue();
-    auto z = IntVar32::Ternary((x == 5), x, x - x);
-    auto val = c.getLiteral<IntVar32>(5);
+    auto y = c.getLiteral<UIntVar32>(0x1234);
+    auto z = (x * y) / y;
+    auto val = c.getLiteral<UIntVar32>(0x1337);
     auto p = c.generateCNF(z == val);
     std::cout << "CNF generated\n";
+    //p.printDIMACS(std::cout);
     auto soln = p.solve();
     if (soln) {
         std::cout << "SAT\n";

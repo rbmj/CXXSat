@@ -189,12 +189,12 @@ private:
 public:
     //for compatibility purposes
     typedef bool int_type;
-    BitVar(const BitArgument& arg);
-    BitVar(const BitVar& v);
-    explicit BitVar(value_ptr);
+    BitVar(const BitArgument&);
+    BitVar(const BitVar&);
+    explicit BitVar(const value_ptr&);
     BitVar(bool, const std::weak_ptr<Circuit::impl>&);
     value_ptr getBit() const;
-    static BitVar Not(BitVar);
+    static BitVar Not(const BitVar&);
     static BitVar And(const BitVar&, const BitVar&);
     static BitVar Nand(const BitVar&, const BitVar&);
     static BitVar Or(const BitVar&, const BitVar&);
@@ -436,6 +436,7 @@ public:
     }
     template <bool NewSigned, unsigned NewN>
     IntVar<NewSigned, NewN> cast() const;
+    static this_t mask_all(const this_t&, const BitVar&);
 private:
     template <class... Args>
     explicit IntVar(const std::weak_ptr<Circuit::impl>& c, Args&&... args) 
@@ -444,11 +445,12 @@ private:
     void binary_transform(const this_t&, const this_t&, Op);
     template <class Op>
     void variadic_transform(const std::vector<this_t>&, Op);
-    static this_t mask_all(const this_t&, const BitVar&);
     static this_t do_addition(const this_t&, const this_t&, bool, 
             value_ptr* = nullptr);
     static void divrem_unsigned(const this_t&, const this_t&, this_t*, this_t*);
-    static IntVar<Signed, N*2> mul_unsigned(const this_t&, const this_t&);
+    template <unsigned X = N>
+    static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
+    ::type mul_unsigned(const this_t&, const this_t&);
     std::unique_ptr<Variable> int_cast(bool, unsigned) const;
 };
 
@@ -746,7 +748,9 @@ typename std::enable_if<(X < IntVar<Signed, N>::multiply_limit), IntVar<Signed, 
 }
 
 template <bool Signed, unsigned N>
-IntVar<Signed, N*2> IntVar<Signed, N>::mul_unsigned(const this_t& a, const this_t& b) {
+template <unsigned X>
+typename std::enable_if<(X < IntVar<Signed, N>::multiply_limit), IntVar<Signed, N*2>>
+::type IntVar<Signed, N>::mul_unsigned(const this_t& a, const this_t& b) {
     auto x = a.cast<Signed, N*2>();
     IntVar<Signed, N*2> ret((typename IntVar<Signed, N*2>::int_type)0, a.getCircuit());
     auto& bits = b.getBits();

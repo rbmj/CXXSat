@@ -21,7 +21,7 @@ BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit(), BitArr{{Circuit:
 
 BitVar::BitVar(const BitVar& v) : Base(v.getCircuit(), BitArr{{v.getBit()->clone()}}) {}
 
-BitVar::BitVar(std::shared_ptr<Circuit::Value> v) : Base(v->getCircuit(), BitArr{{std::move(v)}}) {}
+BitVar::BitVar(const std::shared_ptr<Circuit::Value>& v) : Base(v->getCircuit(), BitArr{{v->clone()}}) {}
 
 BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c, BitArr{{b ?
         Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c)}}) {}
@@ -36,9 +36,8 @@ BitVar& BitVar::operator=(const BitVar& v) {
     return *this;
 }
 
-BitVar BitVar::Not(BitVar v) {
-    v.getBit() = ::Not(v.getBit());
-    return std::move(v);
+BitVar BitVar::Not(const BitVar& v) {
+    return BitVar{::Not(v.getBit())};
 }
 
 BitVar BitVar::And(const BitVar& a, const BitVar& b) {
