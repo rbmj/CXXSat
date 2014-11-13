@@ -1,5 +1,6 @@
 #include <CXXSat/Variable.h>
 #include <CXXSat/Circuit.h>
+#include <CXXSat/DynVar.h>
 
 //avoid ugly syntax...
 #define CALL_MEMBER(obj, fun) ((obj).*(fun))
@@ -14,12 +15,16 @@ template class IntVar<false, 32>;
 template class IntVar<true, 64>;
 template class IntVar<false, 64>;
 
-std::unique_ptr<Variable> Variable::LogAnd(const Variable& a, const Variable& b) {
-    return ((const Variable&)(!(a.isZero()) & !(b.isZero()))).clone();
+std::unique_ptr<Variable> Variable::Not() const {
+    return isZero().clone();
 }
 
-std::unique_ptr<Variable> Variable::LogOr(const Variable& a, const Variable& b) {
-    return ((const Variable&)(!(a.isZero()) | !(b.isZero()))).clone();
+std::unique_ptr<Variable> Variable::LogAnd(const Variable& v) const {
+    return ((const Variable&)(!(this->isZero()) & !(v.isZero()))).clone();
+}
+
+std::unique_ptr<Variable> Variable::LogOr(const Variable& v) const {
+    return ((const Variable&)(!(this->isZero()) | !(v.isZero()))).clone();
 }
 
 BitVar::BitVar(const std::weak_ptr<Circuit::impl>& c) : Base(c) {}
@@ -32,6 +37,17 @@ BitVar::BitVar(const Circuit::Value& v) : Base(v.getCircuit(), BitArr{{v}}) {}
 
 BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c, BitArr{{b ?
         Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c)}}) {}
+
+BitVar BitVar::FromDynamic(const DynVar& d) {
+    if (d.isBit()) {
+        return {(BitVar&)(*(d.var))};
+    }
+    else {
+        auto x = d.asBool();
+        assert(x.isBit());
+        return {(BitVar&)(*(x.var))};
+    }
+}
 
 Circuit::Value& BitVar::getBit() {
     return getBits().at(0);
@@ -111,6 +127,12 @@ std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shl(const Variable& v) cons
     return (IntVar<true, int_size>(CAST(*this)) <<
             IntVar<true, int_size>(CAST(v))).clone();
 }
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shr(unsigned u) const {
+    return (IntVar<true, int_size>(CAST(*this)) >> u).clone();
+}
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shl(unsigned u) const {
+    return (IntVar<true, int_size>(CAST(*this)) << u).clone();
+}
 std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Neg() const {
     return (~(IntVar<true, int_size>(CAST(*this)))).clone();
 }
@@ -121,6 +143,14 @@ std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Less(const Variable& v) con
 
 std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Equal(const Variable& v) const {
     return BitVar::Xnor(CAST(*this), CAST(v)).clone();
+}
+
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Minus() const {
+    return IntVar<true, int_size>(CAST(*this)).operator-().clone();
+}
+
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Promote() const {
+    return IntVar<true, int_size>(CAST(*this)).clone();
 }
 
 void Variable::Base<BitVar, 0>::DivMod(const Variable& d, std::unique_ptr<Variable>* qp, var_ptr* rp) const {

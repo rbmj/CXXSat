@@ -49,10 +49,14 @@ const std::weak_ptr<Circuit::impl>& Circuit::pimpl_get_self() const {
     return pimpl->self;
 }
 
-Problem Circuit::generateCNF(BitVar b) const {
+Problem Circuit::generateCNF(const BitVar& b) const {
     auto cnf = generateCNF();
     cnf.addClause({b.getBit().getID()});
     return std::move(cnf);
+}
+
+Problem Circuit::generateCNF(const DynVar& d) const {
+    return generateCNF(BitVar::FromDynamic(d));
 }
 
 void Circuit::number() const {

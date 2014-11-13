@@ -23,6 +23,7 @@
 class Argument;
 class Variable;
 class BitVar;
+class DynVar;
 
 template <bool, unsigned>
 class IntVar;
@@ -63,7 +64,8 @@ public:
         return T(t, pimpl_get_self());
     }
     Problem generateCNF() const;
-    Problem generateCNF(BitVar b) const;
+    Problem generateCNF(const BitVar&) const;
+    Problem generateCNF(const DynVar&) const;
 };
 
 class Circuit::Node {

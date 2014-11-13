@@ -14,9 +14,10 @@ class BitVar;
 class DynVar;
 
 class Variable {
+public:
+    static constexpr int int_size = 32;
 protected:
     typedef std::unique_ptr<Variable> var_ptr;
-    static constexpr int int_size = 32;
 private:
     std::weak_ptr<Circuit::impl> circuit;
     int type;
@@ -33,8 +34,9 @@ private:
     virtual var_ptr do_cast(int) const = 0;
     virtual BitVar isZero() const = 0;
     //begin list of operations:
-    virtual var_ptr Not() const = 0;
     virtual var_ptr Neg() const = 0;
+    virtual var_ptr Minus() const = 0;
+    virtual var_ptr Promote() const = 0;
     virtual var_ptr And(const Variable&) const = 0;
     virtual var_ptr Or(const Variable&) const = 0;
     virtual var_ptr Xor(const Variable&) const = 0;
@@ -42,14 +44,17 @@ private:
     virtual var_ptr Sub(const Variable&) const = 0;
     virtual var_ptr Mul(const Variable&) const = 0;
     virtual var_ptr Shr(const Variable&) const = 0;
+    virtual var_ptr Shr(unsigned) const = 0;
     virtual var_ptr Shl(const Variable&) const = 0;
+    virtual var_ptr Shl(unsigned) const = 0;
     virtual var_ptr Less(const Variable&) const = 0;
     virtual var_ptr Equal(const Variable&) const = 0;
     virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const = 0;
     //end operations
     //pseudo-operations, implemented in terms of actual operaitons
-    var_ptr LogAnd(const Variable&, const Variable&);
-    var_ptr LogOr(const Variable&, const Variable&);
+    var_ptr Not() const;
+    var_ptr LogAnd(const Variable& v) const;
+    var_ptr LogOr(const Variable& v) const;
     var_ptr Greater(const Variable& a) const {
         return GreaterEq(a)->And(*(Equal(a)->Not()));
     }
@@ -59,7 +64,7 @@ private:
     var_ptr GreaterEq(const Variable& a) const {
         return Less(a)->Not();
     }
-    var_ptr NotEqual(const Variable& a) const {
+    var_ptr NotEq(const Variable& a) const {
         return Equal(a)->Not();
     }
     var_ptr Div(const Variable& v) const {
@@ -102,6 +107,7 @@ template <class Derived, int Type>
 class Variable::Base_base : public Variable {
     template <class T, int I>
     friend class Variable::Base;
+    friend class Variable;
 public:
     static constexpr unsigned numBits() {
         return (Type == 0) ? 1 : (unsigned)(
@@ -122,9 +128,6 @@ public:
         return bits;
     }
 private:
-    virtual var_ptr Not() const {
-        return Derived::Not(CAST(*this)).clone();
-    }
     virtual var_ptr And(const Variable& v) const {
         return Derived::And(CAST(*this), CAST(v)).clone();
     }
@@ -156,8 +159,14 @@ class Variable::Base : public Variable::Base_base<Derived, Type> {
     virtual var_ptr Mul(const Variable& v) const {
         return Derived::Mul(CAST(*this), CAST(v)).clone();
     }
+    virtual var_ptr Shr(unsigned u) const {
+        return Derived::Shr(CAST(*this), u).clone();
+    }
     virtual var_ptr Shr(const Variable& v) const {
         return Derived::Shr(CAST(*this), CAST(v)).clone();
+    }
+    virtual var_ptr Shl(unsigned u) const {
+        return Derived::Shl(CAST(*this), u).clone();
     }
     virtual var_ptr Shl(const Variable& v) const {
         return Derived::Shl(CAST(*this), CAST(v)).clone();
@@ -178,6 +187,12 @@ class Variable::Base : public Variable::Base_base<Derived, Type> {
         if (qp) *qp = q.clone();
         if (rp) *rp = r.clone();
     }
+    virtual var_ptr Minus() const {
+        return Derived::Minus(CAST(*this)).clone();
+    }
+    virtual var_ptr Promote() const {
+        return Derived::Promote(CAST(*this)).clone();
+    }
     std::unique_ptr<Variable> do_cast(int) const;
 public:
     using Base_base<Derived, Type>::Base_base;
@@ -191,10 +206,14 @@ class Variable::Base<BitVar, 0> : public Variable::Base_base<BitVar, 0> {
     virtual var_ptr Mul(const Variable&) const;
     virtual var_ptr Shr(const Variable&) const;
     virtual var_ptr Shl(const Variable&) const;
+    virtual var_ptr Shr(unsigned) const;
+    virtual var_ptr Shl(unsigned) const;
     virtual var_ptr Less(const Variable&) const;
     virtual var_ptr Equal(const Variable&) const;
     virtual var_ptr Neg() const;
     virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const;
+    virtual var_ptr Minus() const;
+    virtual var_ptr Promote() const;
     std::unique_ptr<Variable> do_cast(int) const;
 public:
     using Base_base<BitVar, 0>::Base_base;
@@ -225,6 +244,7 @@ public:
     static BitVar Xnor(const BitVar&, const BitVar&);
     static BitVar MultiAnd(const std::vector<BitVar>&);
     static BitVar MultiOr(const std::vector<BitVar>&);
+    static BitVar FromDynamic(const DynVar&);
     BitVar& operator=(const BitVar& b);
     BitVar isZero() const {
         return Not(*this);
@@ -275,6 +295,21 @@ constexpr int getTypeVal(bool Signed, unsigned N) {
     return Signed ? -((int)N) : N;
 }
 
+template <bool B, bool Signed, unsigned N>
+struct promote_t_ {
+    typedef IntVar<true, Variable::int_size> type;
+    static constexpr bool sign = true;
+    static constexpr unsigned size = Variable::int_size;
+    static type promote(const IntVar<Signed, N>& c);
+};
+
+template <bool Signed, unsigned N>
+struct promote_t_<false, Signed, N> {
+    typedef IntVar<Signed, N> type;
+    static constexpr bool sign = Signed;
+    static constexpr unsigned size = N;
+    static type promote(const IntVar<Signed, N>& c);
+};
 
 //NOTE:  The bits here are stored little-endian
 template <bool Signed, unsigned N>
@@ -286,16 +321,22 @@ class IntVar : public Variable::Base<IntVar<Signed, N>, getTypeVal(Signed, N)> {
 private:
     typedef Variable::Base<IntVar<Signed, N>, getTypeVal(Signed, N)> Base;
     constexpr static unsigned multiply_limit = 128;
+    static constexpr auto promote = promote_t_<(N < Variable::int_size), Signed, N>::promote;
 public:
     static constexpr unsigned numbits = N;
     static constexpr bool issigned = Signed;
     typedef IntegerType<Signed, N> int_type;
     typedef IntVar<Signed, N> this_t;
     typedef IntArg<Signed, N> arg_t;
+    typedef typename promote_t_<(N < Variable::int_size), Signed, N>::type promote_t;
     IntVar(const arg_t&);
     IntVar(const this_t&);
     IntVar(const BitVar&);
     IntVar(int_type, const std::weak_ptr<Circuit::impl>&);
+    static this_t Negative(const this_t& a) {
+        this_t zero(0, a.getCircuit());
+        return zero - a;
+    }
     static this_t Not(const this_t&);
     static this_t And(const this_t&, const this_t&);
     static this_t Nand(const this_t&, const this_t&);
@@ -325,6 +366,12 @@ public:
     static BitVar LogOr(const this_t& a, const this_t& b) {
         return !(a.isZero()) | !(b.isZero());
     }
+    static promote_t Minus(const this_t& a) {
+        return Promote(Negative(a));
+    }
+    static promote_t Promote(const this_t& a) {
+        return promote(a);
+    }
     template <unsigned X = N>
     static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
     ::type Mul_full(const this_t&, const this_t&);
@@ -345,7 +392,7 @@ public:
     static void DivRem(const this_t&, const this_t&, this_t*, this_t*);
     this_t abs() const {
         if (Signed) {
-            return Ternary(this->getBits()[N-1], -(*this), *this);
+            return Ternary(this->getBits()[N-1], Negative(*this), *this);
         }
         else {
             return *this;
@@ -355,9 +402,11 @@ public:
     this_t operator~() const {
         return Not(*this);
     }
-    this_t operator-() const {
-        this_t zero(0, this->getCircuit());
-        return zero - *this;
+    promote_t operator-() const {
+        return Minus(*this);
+    }
+    promote_t operator+() const {
+        return Promote(*this);
     }
     this_t& operator&=(const this_t& v) {
         return *this = *this & v;
@@ -495,6 +544,16 @@ private:
     ::type mul_unsigned(const this_t&, const this_t&);
     std::unique_ptr<Variable> int_cast(bool, unsigned) const;
 };
+
+template <bool B, bool Signed, unsigned N>
+typename promote_t_<B, Signed, N>::type promote_t_<B, Signed, N>::promote(const IntVar<Signed, N>& c) {
+    return c.template cast<sign, size>();
+}
+
+template <bool Signed, unsigned N>
+typename promote_t_<false, Signed, N>::type promote_t_<false, Signed, N>::promote(const IntVar<Signed, N>& c) {
+    return c;
+}
 
 #include <CXXSat/Argument.h>
 
@@ -785,10 +844,10 @@ void IntVar<Signed, N>::DivRem(const this_t& val, const this_t& div,
     divrem_unsigned(val.abs(), div.abs(), quot, rem);
     if (Signed) {
         if (rem) {
-            *rem = Ternary(val.isNeg(), -(*rem), *rem);
+            *rem = Ternary(val.isNeg(), Negative(*rem), *rem);
         }
         if (quot) {
-            *quot = Ternary(val.isNeg() ^ div.isNeg(), -(*quot), *quot);
+            *quot = Ternary(val.isNeg() ^ div.isNeg(), Negative(*quot), *quot);
         }
     }
 }
@@ -822,7 +881,7 @@ typename std::enable_if<(X < IntVar<Signed, N>::multiply_limit), IntVar<Signed, 
 ::type IntVar<Signed, N>::Mul_full(const this_t& a, const this_t& b) {
     auto ret = mul_unsigned(a.abs(), b.abs());
     if (Signed) {
-        ret = IntVar<Signed, N*2>::Ternary(a.isNeg() ^ b.isNeg(), -ret, ret);
+        ret = IntVar<Signed, N*2>::Ternary(a.isNeg() ^ b.isNeg(), IntVar<Signed, N*2>::Negative(ret), ret);
     }
     return std::move(ret);
 }
