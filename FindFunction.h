@@ -8,7 +8,7 @@
 
 #include <functional>
 
-typedef std::function<void(clang::FunctionDecl*)> FindFunctionCallback;
+typedef std::function<void(clang::FunctionDecl*, clang::ASTContext*)> FindFunctionCallback;
 
 class FindFunctionVisitor 
         : public clang::RecursiveASTVisitor<FindFunctionVisitor>
@@ -29,7 +29,7 @@ public:
             }
             */
             if (decl->doesThisDeclarationHaveABody()) {
-                //
+                callback(decl, context);
             }
         }
         return true;
@@ -65,5 +65,16 @@ public:
 private:
     const char* func;
     FindFunctionCallback callback;
+};
+
+class FindFunctionFactory : public clang::tooling::FrontendActionFactory {
+public:
+    clang::FrontendAction* create() {
+        return new FindFunctionAction(fname, cb);
+    }
+    FindFunctionFactory(const char* f, FindFunctionCallback c) : fname(f), cb(c) {}
+private:
+    const char* fname;
+    FindFunctionCallback cb;
 };
 

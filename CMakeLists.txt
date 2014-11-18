@@ -14,7 +14,7 @@ set(CMAKE_CXX_FLAGS "-g -std=c++14 -Wall")
 target_link_libraries(CircuitTest cxxsat minisat)
 target_link_libraries(IntegerTest cxxsat minisat)
 target_link_libraries(DynamicTest cxxsat minisat)
-target_link_libraries(gen clangFrontend clangSerialization clangDriver clangTooling clangParse clangSema clangStaticAnalyzerFrontend clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangAnalysis clangRewriteFrontend clangRewriteCore clangEdit clangAST clangLex clangBasic llvm LLVM-3.5)
+target_link_libraries(gen clangFrontend clangSerialization clangDriver clangTooling clangParse clangSema clangStaticAnalyzerFrontend clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangAnalysis clangRewriteFrontend clangRewrite clangEdit clangAST clangLex clangBasic llvm LLVM-3.5)
 
 add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS)
 
