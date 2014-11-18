@@ -2,41 +2,8 @@
 #include <CXXSat/Gates.h>
 #include <CXXSat/Variable.h>
 
-struct Circuit::impl {
-    void reg(Input* i) {
-        inputs.insert(i);
-    }
-    void unreg(Input* i) {
-        inputs.erase(inputs.find(i));
-    }
-    /*
-    void reg(Value* v) {
-        outputs.insert(v);
-    }
-    void unreg(Value* v) {
-        outputs.erase(outputs.find(v));
-    }
-    */
-    void reg(Gate* g) {
-        gates.insert(g);
-    }
-    void unreg(Gate* g) {
-        gates.erase(gates.find(g));
-    }
-    void reg(Wire* w) {
-        wires.insert(w);
-    }
-    void unreg(Wire* w) {
-        wires.erase(wires.find(w));
-    }
-    std::shared_ptr<Input> lit0;
-    std::shared_ptr<Input> lit1;
-    std::unordered_set<Input*> inputs;
-    //std::unordered_set<Value*> outputs;
-    std::unordered_set<Gate*> gates;
-    std::unordered_set<Wire*> wires;
-    std::weak_ptr<Circuit::impl> self;
-};
+#include "CircuitImpl.h"
+
 
 Circuit::Circuit() {
     pimpl = std::make_shared<Circuit::impl>();
@@ -55,13 +22,9 @@ Problem Circuit::generateCNF(const BitVar& b) const {
     return std::move(cnf);
 }
 
-Problem Circuit::generateCNF(const DynVar& d) const {
-    return generateCNF(BitVar::FromDynamic(d));
-}
-
-void Circuit::number() const {
+void Circuit::impl::number() {
     int i = 1;
-    for (auto& wire : pimpl->wires) {
+    for (auto& wire : wires) {
         if (wire->setID(i)) ++i;
     }
 }
@@ -71,16 +34,20 @@ BitVar Circuit::getLiteral(bool b) const {
 }
 
 Problem Circuit::generateCNF() const {
+    return pimpl->generateCNF();
+}
+
+Problem Circuit::impl::generateCNF() {
     number();
     Problem p;
-    for (auto& gate : pimpl->gates) {
+    for (auto& gate : gates) {
         gate->emplaceCNF(p);
     }
-    if (pimpl->lit0->referenced()) {
-        p.addClause({-(pimpl->lit0->getID())});
+    if (lit0->referenced()) {
+        p.addClause({-(lit0->getID())});
     }
-    if (pimpl->lit1->referenced()) {
-        p.addClause({pimpl->lit1->getID()});
+    if (lit1->referenced()) {
+        p.addClause({lit1->getID()});
     }
     return std::move(p);
 }
@@ -111,7 +78,9 @@ Circuit::Node::Node(const std::weak_ptr<Circuit::impl>& c, Node::NODE_TYPE t)
     if (auto ptr = circuit.lock()) {
         switch (type) {
             case NODE_TYPE::INPUT:
+                /*
                 ptr->reg(asInput());
+                */
                 break;
             case NODE_TYPE::VALUE:
                 /* don't register
@@ -132,7 +101,9 @@ Circuit::Node::~Node() {
     if (auto ptr = circuit.lock()) {
         switch (type) {
             case NODE_TYPE::INPUT:
+                /*
                 ptr->unreg(asInput());
+                */
                 break;
             case NODE_TYPE::VALUE:
                 /*

@@ -9,6 +9,7 @@
 #include <CXXSat/Sat.h>
 #include <CXXSat/Circuit.h>
 #include <CXXSat/IntegerTypes.h>
+#include <CXXSat/DynVar.h>
 
 typedef std::vector<std::shared_ptr<Circuit::Input>> InputVec;
 
@@ -31,6 +32,7 @@ public:
         inputs(std::forward<Args>(args)...), circuit(c) {}
     virtual ~Argument() {}
     virtual void print(std::ostream&, const Solution&) const = 0;
+    virtual DynVar asDynamic() const = 0;
     std::string toString(const Solution&) const;
 };
 
@@ -48,6 +50,7 @@ public:
     const std::shared_ptr<Circuit::Input>& getInput() const {
         return getInputs().at(0);
     }
+    DynVar asDynamic() const;
 };
 
 template <bool Signed, unsigned N>
@@ -65,6 +68,9 @@ public:
     IntVar<Signed, N> asValue() const;
     int_type solution(const Solution&) const;
     void print(std::ostream&, const Solution&) const;
+    DynVar asDynamic() const {
+        return DynVar{asValue()};
+    }
 };
 
 #include <CXXSat/Variable.h>
@@ -81,7 +87,8 @@ IntegerType<Signed, N> IntArg<Signed, N>::solution(
     int_type t = 0;
     auto& inputs = getInputs();
     for (unsigned i = 0; i < N; ++i) {
-        if (s.at(inputs[i]->getID())) {
+        int id = inputs[i]->getID();
+        if (id != 0 && s.at(id)) {
             t |= 1 << i;
         }
     }

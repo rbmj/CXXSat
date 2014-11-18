@@ -527,8 +527,8 @@ public:
     }
     template <bool NewSigned, unsigned NewN>
     IntVar<NewSigned, NewN> cast() const;
-    static this_t mask_all(const this_t&, const BitVar&);
 private:
+    static this_t mask_all(const this_t&, const BitVar&);
     template <class... Args>
     explicit IntVar(const std::weak_ptr<Circuit::impl>& c, Args&&... args) 
         : Base(c, std::forward<Args>(args)...) {}
@@ -990,6 +990,7 @@ typedef IntVar<true, 32> IntVar32;
 typedef IntVar<false, 32> UIntVar32;
 typedef IntVar<true, 64> IntVar64;
 typedef IntVar<false, 64> UIntVar64;
+
 
 /*
 template <class T, std::true_type = true>

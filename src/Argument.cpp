@@ -36,6 +36,10 @@ bool BitArgument::solution(const Solution& s) const {
     return s.at(getID());
 }
 
+DynVar BitArgument::asDynamic() const {
+    return DynVar{asValue()};
+}
+
 void BitArgument::print(std::ostream& o, const Solution& s) const {
     o << solution(s);
 }

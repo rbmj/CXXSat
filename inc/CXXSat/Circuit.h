@@ -24,6 +24,7 @@ class Argument;
 class Variable;
 class BitVar;
 class DynVar;
+class DynCircuit;
 
 template <bool, unsigned>
 class IntVar;
@@ -41,20 +42,18 @@ public:
     class InvertingWire;
     template <class T>
     class GateBase;
+    friend class DynCircuit;
     //public for convenience, but is incomplete, so no problems
     struct impl; 
 private:
     //needs to be a shared_ptr in order to use weak_ptr<> (sad face)
     std::shared_ptr<impl> pimpl;
     const std::weak_ptr<impl>& pimpl_get_self() const;
-    void number() const;
 public:
     Circuit();
-    template <class T, class... Args>
-    std::shared_ptr<T> addArgument(Args&&... args) {
-        auto ptr = std::make_shared<T>(
-                pimpl_get_self(), std::forward<Args>(args)...);
-        return ptr;
+    template <class T>
+    std::shared_ptr<T> addArgument() {
+        return std::make_shared<T>(pimpl_get_self());
     }
     static Value getLiteralTrue(const std::weak_ptr<Circuit::impl>&);
     static Value getLiteralFalse(const std::weak_ptr<Circuit::impl>&);
@@ -67,8 +66,15 @@ public:
     }
     Problem generateCNF() const;
     Problem generateCNF(const BitVar&) const;
-    Problem generateCNF(const DynVar&) const;
 };
+
+static inline bool circuitsEqual(const std::weak_ptr<Circuit::impl>& a,
+        const std::weak_ptr<Circuit::impl>& b)
+{
+    auto x = a.lock();
+    auto y = b.lock();
+    return (x && y && x == y) || (!x && !y);
+}
 
 class Circuit::Node {
 protected:
@@ -153,7 +159,7 @@ public:
         return true;
     }
 private:
-    int id;
+    int id = 0;
 };
 
 class Circuit::InvertingWire : public Circuit::Wire {

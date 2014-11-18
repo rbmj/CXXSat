@@ -37,14 +37,6 @@ private:
     std::shared_ptr<Circuit::Wire> source;
 };
 
-static inline bool circuitsEqual(const std::weak_ptr<Circuit::impl>& a,
-        const std::weak_ptr<Circuit::impl>& b)
-{
-    auto x = a.lock();
-    auto y = b.lock();
-    return (x && y && x == y) || (!x && !y);
-}
-
 template <class DerivedGate>
 class BinaryGate : public Circuit::GateBase<DerivedGate> {
 protected:
