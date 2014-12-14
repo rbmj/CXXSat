@@ -4,10 +4,6 @@
 //avoid ugly syntax...
 #define CALL_MEMBER(obj, fun) ((obj).*(fun))
 
-constexpr int getType(bool sign, unsigned size) {
-    return (int)(sign ? -size : size);
-}
-
 DynVar DynVar::binary_operation(op_t op, const Variable& a, const Variable& b) {
     if (a.isBit() && b.isBit()) {
         return DynVar{CALL_MEMBER(a, op)(b)};
@@ -36,6 +32,23 @@ DynVar DynVar::binary_operation(op_t op, const Variable& a, const Variable& b) {
     auto new_a = a.do_cast(type);
     auto new_b = b.do_cast(type);
     return DynVar{CALL_MEMBER(*new_a, op)(*new_b)};
+}
+
+DynVar DynVar::do_cast(int type) const {
+    return DynVar{var->do_cast(type)};
+}
+
+DynVar DynVar::mask(const BitVar& cond) const {
+    return DynVar{var->Mask(cond)};
+}
+
+DynVar DynVar::mask(const DynVar& cond) const {
+    return mask(BitVar::FromDynamic(cond));
+}
+
+DynVar DynVar::Ternary(const DynVar& cond, const DynVar& true_val, const DynVar& false_val) {
+    auto condbit = BitVar::FromDynamic(cond);
+    return true_val.mask(condbit) | false_val.mask(!condbit);
 }
 
 DynVar::DynVar(const Variable& v) : var(v.clone()) {}
@@ -161,6 +174,11 @@ DynVar DynVar::operator<<(unsigned u) const {
 
 DynVar DynVar::operator>>(unsigned u) const {
     return DynVar{(+(*this)).var->Shr(u)};
+}
+
+template <>
+DynVar DynVar::cast<bool>() const {
+    return do_cast(0);
 }
 
 

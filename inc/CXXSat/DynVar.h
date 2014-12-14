@@ -1,6 +1,7 @@
 #ifndef DYNVAR_H_INC
 #define DYNVAR_H_INC
 #include <memory>
+#include <type_traits>
 
 class Variable;
 class BitVar;
@@ -11,7 +12,14 @@ private:
     std::unique_ptr<Variable> var;
     using op_t = std::unique_ptr<Variable>(Variable::*)(const Variable&) const;
     static DynVar binary_operation(op_t op, const Variable&, const Variable&);
+    static constexpr int getType(bool sign, unsigned size) {
+        return (int)(sign ? -size : size);
+    }
+    DynVar do_cast(int) const;
+    DynVar mask(const BitVar&) const;
 public:
+    DynVar mask(const DynVar&) const;
+    static DynVar Ternary(const DynVar&, const DynVar&, const DynVar&);
     DynVar(const Variable&);
     explicit DynVar(std::unique_ptr<Variable>&&);
     DynVar(const DynVar&);
@@ -83,7 +91,13 @@ public:
         return *this = *this >> u;
     }
     template <class T>
-    DynVar cast() const;
+    DynVar cast() const {
+        return do_cast(getType(std::is_signed<T>::value, sizeof(T)));
+    }
+    DynVar cast(bool sign, unsigned size) {
+        //will be checked further down
+        return do_cast(getType(sign, size));
+    }
     DynVar& operator=(const DynVar&);
 };
 

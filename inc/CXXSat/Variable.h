@@ -49,6 +49,7 @@ private:
     virtual var_ptr Shl(unsigned) const = 0;
     virtual var_ptr Less(const Variable&) const = 0;
     virtual var_ptr Equal(const Variable&) const = 0;
+    virtual var_ptr Mask(const BitVar&) const = 0;
     virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const = 0;
     //end operations
     //pseudo-operations, implemented in terms of actual operaitons
@@ -180,6 +181,7 @@ class Variable::Base : public Variable::Base_base<Derived, Type> {
     virtual var_ptr Equal(const Variable& v) const {
         return Derived::Equal(CAST(*this), CAST(v)).clone();
     }
+    virtual var_ptr Mask(const BitVar&) const;
     virtual void DivMod(const Variable& d, var_ptr* qp, var_ptr* rp) const {
         Derived q(this->getCircuit());
         Derived r(this->getCircuit());
@@ -211,6 +213,7 @@ class Variable::Base<BitVar, 0> : public Variable::Base_base<BitVar, 0> {
     virtual var_ptr Less(const Variable&) const;
     virtual var_ptr Equal(const Variable&) const;
     virtual var_ptr Neg() const;
+    virtual var_ptr Mask(const BitVar&) const;
     virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const;
     virtual var_ptr Minus() const;
     virtual var_ptr Promote() const;
@@ -712,6 +715,11 @@ DEFINE_BINARY_OP(Xor);
 DEFINE_BINARY_OP(Xnor);
 
 #undef DEFINE_BINARY_OP
+
+template <class Derived, int Type>
+Variable::var_ptr Variable::Base<Derived, Type>::Mask(const BitVar& b) const {
+    return Derived::mask_all(CAST(*this), b).clone();
+}
 
 template <bool Signed, unsigned N>
 IntVar<Signed, N> IntVar<Signed, N>::MultiAnd(const std::vector<this_t>& vec) {

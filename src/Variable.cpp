@@ -40,7 +40,7 @@ BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c, BitArr{{
 
 BitVar BitVar::FromDynamic(const DynVar& d) {
     if (d.isBit()) {
-        return {(BitVar&)(*(d.var))};
+        return {(const BitVar&)(*(d.var))};
     }
     else {
         auto x = d.asBool();
@@ -151,6 +151,10 @@ std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Minus() const {
 
 std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Promote() const {
     return IntVar<true, int_size>(CAST(*this)).clone();
+}
+
+std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Mask(const BitVar& b) const {
+    return BitVar::And(CAST(*this), b).clone();
 }
 
 void Variable::Base<BitVar, 0>::DivMod(const Variable& d, std::unique_ptr<Variable>* qp, var_ptr* rp) const {
