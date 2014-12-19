@@ -15,7 +15,7 @@ class DynVar;
 
 class Variable {
 public:
-    static constexpr int int_size = 32;
+    static constexpr int int_size = ::int_size;
 protected:
     typedef std::unique_ptr<Variable> var_ptr;
 private:

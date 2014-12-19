@@ -52,6 +52,22 @@ public:
     DynVar operator>(const DynVar&) const;
     DynVar operator<=(const DynVar&) const;
     DynVar operator>=(const DynVar&) const;
+    DynVar& operator++() {
+        return *this += 1;
+    }
+    DynVar& operator--() {
+        return *this -= 1;
+    }
+    DynVar operator++(int) {
+        DynVar other{*this};
+        this->operator++();
+        return other;
+    }
+    DynVar operator--(int) {
+        DynVar other{*this};
+        this->operator--();
+        return other;
+    }
     DynVar& operator&=(const DynVar& v) {
         return *this = *this & v;
     }

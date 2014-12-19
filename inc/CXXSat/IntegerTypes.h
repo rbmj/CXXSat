@@ -4,6 +4,8 @@
 #include <type_traits>
 #include <stdint.h>
 
+constexpr int int_size = 32;
+
 template <unsigned N>
 struct Bits {
 };

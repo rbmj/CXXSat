@@ -3,9 +3,12 @@
 #include <utility>
 #include <assert.h>
 
-Scope::Scope(DynCircuit& c) : circuit(c), parent(nullptr), cond(nullptr) {}
-Scope::Scope(Scope& s) : circuit(s.circuit), parent(&s), cond(nullptr) {}
-Scope::Scope(Scope& s, const DynVar& c) : circuit(s.circuit), parent(&s), cond(&c) {}
+Scope::Scope(DynCircuit& c, bool sign, unsigned size) : parent(nullptr), cond(), circuit(c) {
+    declare("_RETURN", sign, size);
+}
+
+Scope::Scope(Scope& s) : parent(&s), cond(), circuit(s.circuit) {}
+Scope::Scope(Scope& s, const DynVar& c) :  parent(&s), cond(std::make_unique<DynVar>(c)), circuit(s.circuit) {}
 
 Scope::~Scope() {
     if (!parent) {
@@ -57,17 +60,21 @@ DynVar& Scope::declare(const std::string& s, bool sign, unsigned size, const cha
     return declare(s, sign, size, atoll(x));
 }
 
-DynVar& Scope::declare(const std::string& s, bool sign, unsigned size, long long x) {
+DynVar& Scope::declare(const std::string& s, bool sign, unsigned size, unsigned long long x) {
+    return declare(s, getLiteral(sign, size, x));
+}
+
+DynVar Scope::getLiteral(bool sign, unsigned size, unsigned long long x) {
     if (!sign) {
         switch (size) {
         case 8:
-            return declare<uint8_t>(s, (uint8_t)x);
+            return circuit.getLiteral<uint8_t>((uint8_t)x);
         case 16:
-            return declare<uint16_t>(s, (uint16_t)x);
+            return circuit.getLiteral<uint16_t>((uint16_t)x);
         case 32:
-            return declare<uint32_t>(s, (uint32_t)x);
+            return circuit.getLiteral<uint32_t>((uint32_t)x);
         case 64:
-            return declare<uint64_t>(s, (uint64_t)x);
+            return circuit.getLiteral<uint64_t>((uint64_t)x);
         default:
             throw std::domain_error("Bad number of bits - no such type");
             break;
@@ -76,16 +83,34 @@ DynVar& Scope::declare(const std::string& s, bool sign, unsigned size, long long
     else {
         switch (size) {
         case 8:
-            return declare<int8_t>(s, (int8_t)x);
+            return circuit.getLiteral<int8_t>((int8_t)x);
         case 16:
-            return declare<int16_t>(s, (int16_t)x);
+            return circuit.getLiteral<int16_t>((int16_t)x);
         case 32:
-            return declare<int32_t>(s, (int32_t)x);
+            return circuit.getLiteral<int32_t>((int32_t)x);
         case 64:
-            return declare<int64_t>(s, (int64_t)x);
+            return circuit.getLiteral<int64_t>((int64_t)x);
         default:
             throw std::domain_error("Bad number of bits - no such type");
             break;
         }
     }
 }
+
+DynVar& Scope::declare(const std::string& s, bool sign, unsigned size, const DynVar& val) {
+    auto& x = declare(s, sign, size);
+    x = val;
+    return x;
+}
+
+DynVar& Scope::declare(const std::string& s, const DynVar& val) {
+    auto res = variables.insert(std::make_pair(
+            s, val));
+    assert(res.second);
+    return res.first->second;
+}
+
+void Scope::yield(const DynVar& v) {
+    (*this)["_RETURN"] = v;
+}
+
