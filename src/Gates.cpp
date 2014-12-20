@@ -2,7 +2,8 @@
 
 // From http://en.wikipedia.org/wiki/Tseitin_transformation
 
-void NotGate::emplaceCNF(Problem& p) {
+void NotGate::emplaceCNF(Problem&) {
+    //using special wire - no cnf needed
     /*
     auto A = source->ID();
     auto C = getWire()->ID();

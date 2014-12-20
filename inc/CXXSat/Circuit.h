@@ -14,6 +14,7 @@
 
 #include <CXXSat/Range.h>
 #include <CXXSat/Sat.h>
+#include <CXXSat/TypeInfo.h>
 
 //From an efficiency standpoint, I'm not completely satisfied with
 //the extent of shared_ptr<> use here.  I wish I could do more stuff
@@ -22,9 +23,6 @@
 
 class Argument;
 class Variable;
-class BitVar;
-class DynVar;
-class DynCircuit;
 
 template <bool, unsigned>
 class IntVar;
@@ -42,7 +40,6 @@ public:
     class InvertingWire;
     template <class T>
     class GateBase;
-    friend class DynCircuit;
     //public for convenience, but is incomplete, so no problems
     struct impl; 
 private:
@@ -51,21 +48,19 @@ private:
     const std::weak_ptr<impl>& pimpl_get_self() const;
 public:
     Circuit();
-    template <class T>
-    std::shared_ptr<T> addArgument() {
-        return std::make_shared<T>(pimpl_get_self());
-    }
+    Argument addArgument(TypeInfo info);
+    template <class Int>
+    Argument addArgument();
+    Argument addArgumentBit();
     static Value getLiteralTrue(const std::weak_ptr<Circuit::impl>&);
     static Value getLiteralFalse(const std::weak_ptr<Circuit::impl>&);
     Value getLiteralTrue() const;
     Value getLiteralFalse() const;
-    BitVar getLiteral(bool) const;
-    template <class T>
-    T getLiteral(typename T::int_type t) const {
-        return T(t, pimpl_get_self());
-    }
+    Variable getLiteralBit(bool) const;
+    template <class Int>
+    Variable getLiteral(Int i) const;
     Problem generateCNF() const;
-    Problem generateCNF(const BitVar&) const;
+    Problem generateCNF(const Variable&) const;
 };
 
 static inline bool circuitsEqual(const std::weak_ptr<Circuit::impl>& a,
@@ -289,7 +284,7 @@ public:
             return wire;
         }
         else {
-            assert(false); //we should not exist if there is no wire...
+            throw 0; //we should not exist if there is no wire...
         }
     }
 private:
@@ -301,5 +296,8 @@ protected:
         out_wire = w;
     }
 };
+
+//MAINTAINER'S NOTE:  see Argument.h for AddArgument<>() impl,
+//                        Variable.h for getLiteral<>() impl.
 
 #endif

@@ -1,9 +1,17 @@
 #include <CXXSat/Circuit.h>
 #include <CXXSat/Gates.h>
 #include <CXXSat/Variable.h>
+#include <CXXSat/Argument.h>
 
 #include "CircuitImpl.h"
 
+Argument Circuit::addArgument(TypeInfo info) {
+    return Argument(pimpl_get_self(), info);
+}
+
+Argument Circuit::addArgumentBit() {
+    return addArgument(TypeInfo::createBit());
+}
 
 Circuit::Circuit() {
     pimpl = std::make_shared<Circuit::impl>();
@@ -16,9 +24,10 @@ const std::weak_ptr<Circuit::impl>& Circuit::pimpl_get_self() const {
     return pimpl->self;
 }
 
-Problem Circuit::generateCNF(const BitVar& b) const {
+Problem Circuit::generateCNF(const Variable& b) const {
     auto cnf = generateCNF();
-    cnf.addClause({b.getBit().getID()});
+    auto bitid = (b.isBit() ? b : b.asBit()).bits[0].getID();
+    cnf.addClause({bitid});
     return std::move(cnf);
 }
 
@@ -29,8 +38,8 @@ void Circuit::impl::number() {
     }
 }
 
-BitVar Circuit::getLiteral(bool b) const {
-    return BitVar(b, pimpl_get_self());
+Variable Circuit::getLiteralBit(bool b) const {
+    return Variable(b ? getLiteralTrue() : getLiteralFalse());
 }
 
 Problem Circuit::generateCNF() const {

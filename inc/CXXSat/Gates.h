@@ -99,7 +99,7 @@ public:
         : Circuit::GateBase<DerivedGate>(_a.getCircuit())
     {
         std::initializer_list<const Circuit::Value&> values{_a, args...};
-        std::transform(begin(values), end(values), std::inserter(inputs, begin(inputs)),
+        std::transform(begin(values), end(values), std::back_inserter(inputs),
                 [](const Circuit::Value& c) { return c.source(); });
         for (auto& i : inputs) {
             i->connect(this);
@@ -110,7 +110,7 @@ public:
     MultiGate(const Container& args)
         : Circuit::GateBase<DerivedGate>(begin(args)->getCircuit())
     {
-        std::transform(begin(args), end(args), std::inserter(inputs, begin(inputs)),
+        std::transform(begin(args), end(args), std::back_inserter(inputs),
             [](const Circuit::Value& v) {
                 return v.source();
             }

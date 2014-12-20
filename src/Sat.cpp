@@ -41,7 +41,7 @@ Solution Problem::solve(bool debug) const {
     Minisat::vec<Minisat::Lit> lits;
     for (auto& clause : clauses) {
         for (auto& var_in : clause) {
-            unsigned var = ((var_in > 0) ? var_in : -var_in) - 1;
+            int var = ((var_in > 0) ? var_in : -var_in) - 1;
             while (var >= s.nVars()) {
                 s.newVar();
             }

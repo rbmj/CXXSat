@@ -1,191 +1,361 @@
 #include <CXXSat/Variable.h>
 #include <CXXSat/Circuit.h>
-#include <CXXSat/DynVar.h>
+#include <CXXSat/Argument.h>
 
-//avoid ugly syntax...
-#define CALL_MEMBER(obj, fun) ((obj).*(fun))
+Variable::Variable(const Argument& arg) : 
+    circuit{arg.getCircuit()}, bits{make_vector([&arg](std::size_t i) {
+                return Circuit::Value(*(arg.getInputs().at(i)));
+    }, arg.size())}, is_signed{arg.sign()} {}
 
-//explicit instantiation
-template class IntVar<true, 8>;
-template class IntVar<false, 8>;
-template class IntVar<true, 16>;
-template class IntVar<false, 16>;
-template class IntVar<true, 32>;
-template class IntVar<false, 32>;
-template class IntVar<true, 64>;
-template class IntVar<false, 64>;
+Variable::Variable(const Variable& var) : 
+    circuit{var.getCircuit()}, bits{make_vector([&var](std::size_t i) {
+                return var.bits[i];
+    }, var.size())}, is_signed{var.sign()} {}
 
-std::unique_ptr<Variable> Variable::Not() const {
-    return isZero().clone();
-}
-
-std::unique_ptr<Variable> Variable::LogAnd(const Variable& v) const {
-    return ((const Variable&)(!(this->isZero()) & !(v.isZero()))).clone();
-}
-
-std::unique_ptr<Variable> Variable::LogOr(const Variable& v) const {
-    return ((const Variable&)(!(this->isZero()) | !(v.isZero()))).clone();
-}
-
-BitVar::BitVar(const std::weak_ptr<Circuit::impl>& c) : Base(c) {}
-
-BitVar::BitVar(const BitArgument& arg) : Base(arg.getCircuit(), BitArr{{Circuit::Value(*(arg.getInput()))}}) {}
-
-BitVar::BitVar(const BitVar& v) : Base(v.getCircuit(), BitArr{{v.getBit()}}) {}
-
-BitVar::BitVar(const Circuit::Value& v) : Base(v.getCircuit(), BitArr{{v}}) {}
-
-BitVar::BitVar(bool b, const std::weak_ptr<Circuit::impl>& c) : Base(c, BitArr{{b ?
-        Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c)}}) {}
-
-BitVar BitVar::FromDynamic(const DynVar& d) {
-    if (d.isBit()) {
-        return {(const BitVar&)(*(d.var))};
+Variable& Variable::operator=(const Variable& other) {
+    if (other.getTypeInfo() == getTypeInfo()) {
+        bits = other.bits;
     }
     else {
-        auto x = d.asBool();
-        assert(x.isBit());
-        return {(BitVar&)(*(x.var))};
+        bits = std::move(other.cast(getTypeInfo()).bits);
     }
-}
-
-Circuit::Value& BitVar::getBit() {
-    return getBits().at(0);
-}
-
-const Circuit::Value& BitVar::getBit() const {
-    return getBits().at(0);
-}
-
-BitVar& BitVar::operator=(const BitVar& v) {
-    //TODO:  Assert circuits equal
-    getBit() = v.getBit();
     return *this;
 }
 
-BitVar BitVar::Not(const BitVar& v) {
-    return BitVar{::Not(v.getBit())};
-}
-
-BitVar BitVar::And(const BitVar& a, const BitVar& b) {
-    return BitVar(::And(a.getBit(), b.getBit()));
-}
-
-BitVar BitVar::Nand(const BitVar& a, const BitVar& b) {
-    return BitVar(::Nand(a.getBit(), b.getBit()));
-}
-BitVar BitVar::Or(const BitVar& a, const BitVar& b) {
-    return BitVar(::Or(a.getBit(), b.getBit()));
-}
-BitVar BitVar::Nor(const BitVar& a, const BitVar& b) {
-    return BitVar(::Nor(a.getBit(), b.getBit()));
-}
-BitVar BitVar::Xor(const BitVar& a, const BitVar& b) {
-    return BitVar(::Xor(a.getBit(), b.getBit()));
-}
-BitVar BitVar::Xnor(const BitVar& a, const BitVar& b) {
-    return BitVar(::Xnor(a.getBit(), b.getBit()));
-}
-
-BitVar BitVar::MultiAnd(const std::vector<BitVar>& vec) {
-    std::vector<Circuit::Value> values;
-    for (auto& var : vec) {
-        values.push_back(var.getBit());
+Variable Variable::generateMask(const Variable& v, TypeInfo info) {
+    const auto& b = v.isBit() ? v : v.asBit();
+    Variable x(b.getCircuit(), info);
+    for (auto& bit : x.bits) {
+        bit = b.bits[0];
     }
-    return BitVar(::MultiAnd(values));
+    return std::move(x);
 }
 
-BitVar BitVar::MultiOr(const std::vector<BitVar>& vec) {
-    std::vector<Circuit::Value> values;
-    for (auto& var : vec) {
-        values.push_back(var.getBit());
+Variable Variable::generateMask(const Variable& v) const {
+    return generateMask(v, getTypeInfo());
+}
+
+Variable Variable::Not(const Variable& a) {
+    Variable x(a.getCircuit(), a.getTypeInfo());
+    std::transform(begin(a.bits), end(a.bits), begin(x.bits),
+        [](const Circuit::Value& v) {
+            return ::Not(v);
+        }
+    );
+    return std::move(x);                
+};
+
+Variable Variable::Equal_(const Variable& a, const Variable& b) {
+    assert(a.getTypeInfo() == b.getTypeInfo());
+    const auto& i = Xnor(a, b);
+    return Variable(::MultiAnd(i.bits));
+}
+
+Variable Variable::NotEq(const Variable& a, const Variable& b) {
+    return !Equal(a, b);
+}
+
+Variable Variable::Less_(const Variable& a, const Variable& b) {
+    assert(a.getTypeInfo() == b.getTypeInfo());
+    Circuit::Value carry_out;
+    //subtract *this - t, get the carry
+    auto comparison = do_addition(a, ~b, true, &carry_out);
+    if (a.sign()) {
+        //if signed, have to do a carry computation for the sign bits:
+        auto extra_bit = ::Xor(a.bits[a.size()-1], ::Not(b.bits[b.size()-1]));
+        return Variable(::Xor(extra_bit, carry_out));
     }
-    return BitVar(::MultiOr(values));
-}
-
-int BitVar::getID() const {
-    return getBit().getID();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Add(const Variable& v) const {
-    return (IntVar<true, int_size>(CAST(*this)) + 
-            IntVar<true, int_size>(CAST(v))).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Sub(const Variable& v) const {
-    return (IntVar<true, int_size>(CAST(*this)) -
-            IntVar<true, int_size>(CAST(v))).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Mul(const Variable& v) const {
-    return (IntVar<true, int_size>(CAST(*this)) *
-            IntVar<true, int_size>(CAST(v))).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shr(const Variable& v) const {
-    return (IntVar<true, int_size>(CAST(*this)) >>
-            IntVar<true, int_size>(CAST(v))).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shl(const Variable& v) const {
-    return (IntVar<true, int_size>(CAST(*this)) <<
-            IntVar<true, int_size>(CAST(v))).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shr(unsigned u) const {
-    return (IntVar<true, int_size>(CAST(*this)) >> u).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Shl(unsigned u) const {
-    return (IntVar<true, int_size>(CAST(*this)) << u).clone();
-}
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Neg() const {
-    return (~(IntVar<true, int_size>(CAST(*this)))).clone();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Less(const Variable& v) const {
-    return (!CAST(*this) & CAST(v)).clone();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Equal(const Variable& v) const {
-    return BitVar::Xnor(CAST(*this), CAST(v)).clone();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Minus() const {
-    return IntVar<true, int_size>(CAST(*this)).operator-().clone();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Promote() const {
-    return IntVar<true, int_size>(CAST(*this)).clone();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::Mask(const BitVar& b) const {
-    return BitVar::And(CAST(*this), b).clone();
-}
-
-void Variable::Base<BitVar, 0>::DivMod(const Variable& d, std::unique_ptr<Variable>* qp, var_ptr* rp) const {
-    IntVar<true, int_size> q(this->getCircuit()), r(this->getCircuit());
-    IntVar<true, int_size>::DivRem({CAST(*this)}, {CAST(d)}, &q, &r);
-    if (qp) *qp = q.clone();
-    if (rp) *rp = r.clone();
-}
-
-std::unique_ptr<Variable> Variable::Base<BitVar, 0>::do_cast(int newtype) const {
-    switch (newtype) {
-    case -64:
-        return std::make_unique<IntVar<true, 64>>((const BitVar&)*this);
-    case -32:
-        return std::make_unique<IntVar<true, 32>>((const BitVar&)*this);
-    case -16:
-        return std::make_unique<IntVar<true, 16>>((const BitVar&)*this);
-    case -8:
-        return std::make_unique<IntVar<true, 8>>((const BitVar&)*this);
-    case 8:
-        return std::make_unique<IntVar<false, 8>>((const BitVar&)*this);
-    case 16:
-        return std::make_unique<IntVar<false, 16>>((const BitVar&)*this);
-    case 32:
-        return std::make_unique<IntVar<false, 32>>((const BitVar&)*this);
-    case 64:
-        return std::make_unique<IntVar<false, 64>>((const BitVar&)*this);
-    default:
-        assert(false); //unimplemented
-        break;
+    else {
+        //if unsigned, a carry indicates the result of the subtraction is
+        //positive or zero, so *this >= t
+        return Variable(::Not(carry_out));
     }
-    return nullptr; //can't happen
 }
+
+Variable Variable::LessEq(const Variable& a, const Variable& b) {
+    return Less(a, b) | Equal(a, b);
+}
+
+Variable Variable::Greater(const Variable& a, const Variable& b) {
+    return !LessEq(a, b);
+}
+
+Variable Variable::GreaterEq(const Variable& a, const Variable& b) {
+    return !Less(a, b);
+}
+
+#define DEFINE_BINARY_OP(name) \
+    Variable Variable::name##_(const Variable& a, const Variable& b) { \
+        assert(a.getTypeInfo() == b.getTypeInfo()); \
+        Variable x(a.getCircuit(), a.getTypeInfo()); \
+        x.binary_transform(a, b, [](const Circuit::Value& y, const Circuit::Value& z) { \
+            return ::name(y, z); \
+        }); \
+        return std::move(x); \
+    }
+
+DEFINE_BINARY_OP(And);
+DEFINE_BINARY_OP(Nand);
+DEFINE_BINARY_OP(Or);
+DEFINE_BINARY_OP(Nor);
+DEFINE_BINARY_OP(Xor);
+DEFINE_BINARY_OP(Xnor);
+
+#undef DEFINE_BINARY_OP
+
+bool check_multi_types(const std::vector<Variable>& vec) {
+    auto a = vec.at(0).getTypeInfo();
+    for (const auto& x : vec) {
+        if (a != x.getTypeInfo()) return false;
+    }
+    return true;
+}
+
+Variable Variable::MultiAnd(const std::vector<Variable>& vec) {
+    assert(check_multi_types(vec));
+    Variable x(vec.at(0).getCircuit(), vec.at(0).getTypeInfo());
+    x.variadic_transform(vec, ::MultiAnd<std::vector<Circuit::Value>>);
+    return std::move(x);
+}
+
+Variable Variable::MultiOr(const std::vector<Variable>& vec) {
+    assert(check_multi_types(vec));
+    Variable x(vec.at(0).getCircuit(), vec.at(0).getTypeInfo());
+    x.variadic_transform(vec, ::MultiOr<std::vector<Circuit::Value>>);
+    return std::move(x);
+}
+
+Variable Variable::Add_(const Variable& a, const Variable& b) {
+    assert(a.getTypeInfo() == b.getTypeInfo());
+    return do_addition(a, b, false);
+}
+
+Variable Variable::Sub_(const Variable& a, const Variable& b) {
+    assert(a.getTypeInfo() == b.getTypeInfo());
+    return do_addition(a, Not(b), true);
+}
+
+Variable Variable::mask_all(const Variable& a, const Variable& b) {
+    const Variable& bit = b.isBit() ? b : b.asBit();
+    Variable ret(a.getCircuit(), a.getTypeInfo());
+    for (unsigned i = 0; i < a.size(); ++i) {
+        ret.bits[i] = ::And(a.bits[i], bit.bits[0]);
+    }
+    return std::move(ret);
+}
+
+Variable Variable::do_addition(const Variable& a, const Variable& b, bool c, Circuit::Value* carry_out) {
+    auto carry = c ? Circuit::getLiteralTrue(a.getCircuit()) 
+        : Circuit::getLiteralFalse(a.getCircuit());
+    Variable ret(a.getCircuit(), a.getTypeInfo());
+    for (unsigned i = 0; i < a.size(); ++i) {
+        std::tie(ret.bits[i], carry) = FullAdder(a.bits[i], b.bits[i], std::move(carry));
+    }
+    if (carry_out) {
+        *carry_out = std::move(carry);
+    }
+    return std::move(ret);
+}
+
+Variable Variable::Shl(const Variable& t, unsigned n) {
+    //left shift
+    Variable ret(t.getCircuit(), t.getTypeInfo());
+    unsigned i = 0;
+    for (; i < n; ++i) {
+        ret.bits[i] = Circuit::getLiteralFalse(t.getCircuit());
+    }
+    for (; i < t.size(); ++i) {
+        ret.bits[i] = t.bits[i - n];
+    }
+    return std::move(ret);
+}
+
+Variable Variable::Shl_(const Variable& t, const Variable& n) {
+    //left shift
+    assert(t.getTypeInfo() == n.getTypeInfo());
+    std::vector<Variable> integers;
+    for (unsigned i = 0; i < t.size(); ++i) {
+        auto iseq = (n == i);
+        integers.push_back(mask_all(Shl(t, i), iseq));
+    }
+    return MultiOr(integers);
+}
+
+Variable Variable::Shr(const Variable& t, unsigned n) {
+    //right shift
+    Variable ret(t.getCircuit(), t.getTypeInfo());
+    unsigned i = 0;
+    for (; i < n; ++i) {
+        if (t.sign()) {
+            ret.bits[(t.size() - 1) - i] = t.bits[t.size() - 1];
+        }
+        else {
+            ret.bits[(t.size() - 1) - i] = Circuit::getLiteralFalse(t.getCircuit());
+        }
+    }
+    for (; i < t.size(); ++i) {
+        ret.bits[(t.size() - 1) - i] = t.bits[(t.size() - 1) - (i - n)];
+    }
+    return std::move(ret);
+}
+
+Variable Variable::Shr_(const Variable& t, const Variable& n) {
+    //right shift
+    assert(t.getTypeInfo() == n.getTypeInfo());
+    std::vector<Variable> integers;
+    std::vector<Circuit::Value> bits;
+    for (unsigned i = 0; i < t.size(); ++i) {
+        auto iseq = (n == i);
+        integers.push_back(mask_all(Shr(t, i), iseq));
+        bits.push_back(iseq.bits[0]);
+    }
+    if (t.sign()) {
+        //this is Undefined Behavior, but is the most intuitive result
+        integers.push_back(mask_all(Variable(-1, t.getCircuit(), t.getTypeInfo()), !Variable(::MultiOr(bits))));
+    }
+    return MultiOr(integers);
+}
+
+Variable Variable::Ternary_(const Variable& t, const Variable& f, const Variable& cond) {
+    assert(t.getTypeInfo() == f.getTypeInfo());
+    const auto& condbit = cond.isBit() ? cond : cond.asBit();
+    return mask_all(t, condbit) | mask_all(f, !condbit);
+}
+
+void Variable::DivRem_(const Variable& val, const Variable& div,
+        Variable* quot, Variable* rem)
+{
+    assert(val.getTypeInfo() == div.getTypeInfo());
+    //abs is noop for unsigned
+    divrem_unsigned(val.abs(), div.abs(), quot, rem);
+    if (val.sign()) {
+        if (rem) {
+            rem->overwrite(Ternary(val.isNeg(), Negative(*rem), *rem));
+        }
+        if (quot) {
+            quot->overwrite(Ternary(val.isNeg() ^ div.isNeg(), Negative(*quot), *quot));
+        }
+    }
+}
+
+void Variable::divrem_unsigned(const Variable& val, const Variable& div,
+        Variable* quot, Variable* rem)
+{
+    Variable q(val.getCircuit(), val.getTypeInfo());
+    Variable r(0, val.getCircuit(), val.getTypeInfo());
+    //handle division by zero in a somewhat sane manner
+    Variable mask = val.generateMask(div == 0);
+    for (unsigned i = 0; i < val.size(); ++i) {
+        r <<= 1;
+        r.bits[0] = val.bits[val.size() - 1 - i];
+        auto should_sub = r >= div;
+        q.bits[val.size() - 1 - i] = should_sub.bits[0];
+        r = Ternary(should_sub, r - div, r);
+    }
+    if (quot) {
+        quot->overwrite(std::move(q));
+    }
+    if (rem) {
+        rem->overwrite(std::move(r));
+    }
+}
+
+Variable Variable::Mul_full_(const Variable& a, const Variable& b) {
+    assert(a.getTypeInfo() == b.getTypeInfo());
+    auto ret = mul_unsigned(a.abs(), b.abs());
+    if (a.sign()) {
+        ret = Variable::Ternary(a.isNeg() ^ b.isNeg(), Variable::Negative(ret), ret);
+    }
+    return std::move(ret);
+}
+
+Variable Variable::mul_unsigned(const Variable& a, const Variable& b) {
+    assert(a.getTypeInfo() == b.getTypeInfo());
+    auto result_size = a.size()*2;
+    auto x = a.cast(TypeInfo(a.sign(), result_size));
+    Variable ret(0, a.getCircuit(), x.getTypeInfo());
+    for (unsigned i = 0; i < a.size(); ++i) {
+        ret = Variable::Ternary(b.bits[i], ret + x, ret);
+        x <<= 1;
+    }
+    return std::move(ret);
+}
+
+Variable Variable::cast(TypeInfo info) const {
+    Variable ret{this->getCircuit(), info};
+    if (info.isBit()) {
+        //cast to bit
+        ret.bits[0] = ::Not(isZero().bits[0]);
+    }
+    else if (ret.size() < size()) {
+        for (unsigned i = 0; i < ret.size(); ++i) {
+            ret.bits[i] = bits[i];
+        }
+    }
+    else {
+        unsigned i;
+        for (i = 0; i < size(); ++i) {
+            ret.bits[i] = bits[i];
+        }
+        for (; i < ret.size(); ++i) {
+            if (ret.sign()) {
+                ret.bits[i] = bits[size()-1];
+            }
+            else {
+                ret.bits[i] = Circuit::getLiteralFalse(this->getCircuit());
+            }
+        }
+    }
+    return std::move(ret);
+}
+
+#define DEFINE_BINARY_OP(op, name) \
+    Variable operator op(const Variable& a, const Variable& b) { \
+        return Variable::name(a, b); \
+    }
+
+DEFINE_BINARY_OP(+, Add);
+DEFINE_BINARY_OP(-, Sub);
+DEFINE_BINARY_OP(*, Mul);
+DEFINE_BINARY_OP(/, Div);
+DEFINE_BINARY_OP(%, Rem);
+DEFINE_BINARY_OP(<<, Shl);
+DEFINE_BINARY_OP(>>, Shr);
+DEFINE_BINARY_OP(&, And);
+DEFINE_BINARY_OP(&&, LogAnd);
+DEFINE_BINARY_OP(|, Or);
+DEFINE_BINARY_OP(||, LogOr);
+DEFINE_BINARY_OP(^, Xor);
+DEFINE_BINARY_OP(==, Equal);
+DEFINE_BINARY_OP(!=, NotEq);
+DEFINE_BINARY_OP(<, Less);
+DEFINE_BINARY_OP(>, Greater);
+DEFINE_BINARY_OP(<=, LessEq);
+DEFINE_BINARY_OP(>=, GreaterEq);
+
+#undef DEFINE_BINARY_OP
+
+//now we instantiate the various proxy objects
+//thank you c++11 so I only have to utter these once...
+
+//Bitwise Operations
+decltype(Variable::And) Variable::And;
+decltype(Variable::Nand) Variable::Nand;
+decltype(Variable::Or) Variable::Or;
+decltype(Variable::Nor) Variable::Nor;
+decltype(Variable::Xor) Variable::Xor;
+decltype(Variable::Xnor) Variable::Xnor;
+//Arithmatic Operations
+decltype(Variable::Add) Variable::Add;
+decltype(Variable::Sub) Variable::Sub;
+decltype(Variable::Mul) Variable::Mul;
+decltype(Variable::Mul_full) Variable::Mul_full;
+decltype(Variable::DivRem) Variable::DivRem;
+decltype(Variable::Shl_proxy) Variable::Shl_proxy;
+decltype(Variable::Shr_proxy) Variable::Shr_proxy;
+//Comparisons
+decltype(Variable::Less_proxy) Variable::Less_proxy;
+decltype(Variable::Equal_proxy) Variable::Equal_proxy;
+//Ternary
+decltype(Variable::do_ternary) Variable::do_ternary;
 

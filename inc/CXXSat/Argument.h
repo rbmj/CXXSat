@@ -9,12 +9,14 @@
 #include <CXXSat/Sat.h>
 #include <CXXSat/Circuit.h>
 #include <CXXSat/IntegerTypes.h>
-#include <CXXSat/DynVar.h>
+#include <CXXSat/TypeInfo.h>
+#include <CXXSat/FlexInt.h>
 
 typedef std::vector<std::shared_ptr<Circuit::Input>> InputVec;
 
 class Argument {
 private:
+    bool is_signed;
     InputVec inputs;
     std::weak_ptr<Circuit::impl> circuit;
 public:
@@ -27,95 +29,34 @@ public:
     const InputVec& getInputs() const {
         return inputs;
     }
-    template <class... Args>
-    Argument(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
-        inputs(std::forward<Args>(args)...), circuit(c) {}
-    virtual ~Argument() {}
-    virtual void print(std::ostream&, const Solution&) const = 0;
-    virtual DynVar asDynamic() const = 0;
-    std::string toString(const Solution&) const;
-};
-
-class BitVar;
-class BitArgument : public Argument {
-public:
-    BitArgument(const std::weak_ptr<Circuit::impl>& c);
-    BitVar asValue() const;
-    int getID() const;
-    bool solution(const Solution&) const;
-    void print(std::ostream&, const Solution&) const;
-    std::shared_ptr<Circuit::Input>& getInput() {
-        return getInputs().at(0);
+    size_t size() const {
+        return inputs.size();
     }
-    const std::shared_ptr<Circuit::Input>& getInput() const {
-        return getInputs().at(0);
+    bool sign() const {
+        return is_signed;
     }
-    DynVar asDynamic() const;
-};
-
-template <bool Signed, unsigned N>
-class IntVar;
-
-template <bool Signed, unsigned N>
-class IntArg : public Argument {
-public:
-    typedef IntegerType<Signed, N> int_type;
-    IntArg(const std::weak_ptr<Circuit::impl>& c) : Argument(c) {
-        auto& i = getInputs();
-        std::generate_n(std::inserter(i, begin(i)), N,
+    bool isBit() const {
+        return size() == 1;
+    }
+    TypeInfo getTypeInfo() const {
+        if (isBit()) {
+            return TypeInfo::createBit();
+        }
+        else return TypeInfo(sign(), size());
+    }
+    Argument(const std::weak_ptr<Circuit::impl>& c, TypeInfo info) : is_signed{info.sign()}, circuit(c) {
+        std::generate_n(std::back_inserter(inputs), info.size(),
                 [&c]() { return Circuit::Input::create(c); });
     }
-    IntVar<Signed, N> asValue() const;
-    int_type solution(const Solution&) const;
+    Variable asValue() const;
     void print(std::ostream&, const Solution&) const;
-    DynVar asDynamic() const {
-        return DynVar{asValue()};
-    }
+    std::string toString(const Solution&) const;
+    FlexInt solution(const Solution&) const;
 };
 
-#include <CXXSat/Variable.h>
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntArg<Signed, N>::asValue() const {
-    return IntVar<Signed, N>(*this);
+template <class Int>
+Argument Circuit::addArgument() {
+    return addArgument(TypeInfo::create<Int>());
 }
-
-template <bool Signed, unsigned N>
-IntegerType<Signed, N> IntArg<Signed, N>::solution(
-        const Solution& s) const 
-{
-    int_type t = 0;
-    auto& inputs = getInputs();
-    for (unsigned i = 0; i < N; ++i) {
-        int id = inputs[i]->getID();
-        if (id != 0 && s.at(id)) {
-            t |= 1 << i;
-        }
-    }
-    return t;
-}
-
-template <bool Signed, unsigned N>
-void IntArg<Signed, N>::print(std::ostream& o, const Solution& s) const {
-    o << +solution(s);
-}
-
-extern template class IntArg<true, 8>;
-extern template class IntArg<false, 8>;
-extern template class IntArg<true, 16>;
-extern template class IntArg<false, 16>;
-extern template class IntArg<true, 32>;
-extern template class IntArg<false, 32>;
-extern template class IntArg<true, 64>;
-extern template class IntArg<false, 64>;
-
-typedef IntArg<true, 8> IntArg8;
-typedef IntArg<false, 8> UIntArg8;
-typedef IntArg<true, 16> IntArg16;
-typedef IntArg<false, 16> UIntArg16;
-typedef IntArg<true, 32> IntArg32;
-typedef IntArg<false, 32> UIntArg32;
-typedef IntArg<true, 64> IntArg64;
-typedef IntArg<false, 64> UIntArg64;
 
 #endif

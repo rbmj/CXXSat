@@ -5,1017 +5,485 @@
 #include <CXXSat/Range.h>
 #include <CXXSat/IntegerTypes.h>
 #include <CXXSat/Gates.h>
+#include <CXXSat/TypeInfo.h>
 
 #include <array>
 #include <memory>
 #include <vector>
+#include <type_traits>
+#include <algorithm>
 
-class BitVar;
-class DynVar;
+class Variable;
+
+#define DECLARE_BINARY_OP(op, name) \
+    Variable operator op(const Variable&, const Variable&); \
+    template <class Int> \
+    Variable operator op(const Variable&, const Int&); \
+    template <class Int> \
+    Variable operator op(const Int&, const Variable&);
+
+DECLARE_BINARY_OP(+, Add);
+DECLARE_BINARY_OP(-, Sub);
+DECLARE_BINARY_OP(*, Mul);
+DECLARE_BINARY_OP(/, Div);
+DECLARE_BINARY_OP(%, Rem);
+DECLARE_BINARY_OP(<<, Shl);
+DECLARE_BINARY_OP(>>, Shr);
+DECLARE_BINARY_OP(&, And);
+DECLARE_BINARY_OP(&&, LogAnd);
+DECLARE_BINARY_OP(|, Or);
+DECLARE_BINARY_OP(||, LogOr);
+DECLARE_BINARY_OP(^, Xor);
+DECLARE_BINARY_OP(==, Equal);
+DECLARE_BINARY_OP(!=, NotEq);
+DECLARE_BINARY_OP(<, Less);
+DECLARE_BINARY_OP(>, Greater);
+DECLARE_BINARY_OP(<=, LessEq);
+DECLARE_BINARY_OP(>=, GreaterEq);
+
+#undef DECLARE_BINARY_OP
 
 class Variable {
-public:
-    static constexpr int int_size = ::int_size;
-protected:
-    typedef std::unique_ptr<Variable> var_ptr;
+    friend class Circuit;
 private:
     std::weak_ptr<Circuit::impl> circuit;
-    int type;
-    unsigned size() const {
-        return (unsigned)(sign() ? -type : type);
+    std::vector<Circuit::Value> bits;
+    bool is_signed;
+    enum class op_t {
+        arith,
+        comp,
+        logic,
+        ternary
+    };
+    //a functor class that lets us re-use the existing type conversion logic
+    template <class Ret, class... ExtraArgs>
+    struct binary_operation_generic {
+        template <Ret(&Op)(const Variable&, const Variable&, ExtraArgs...), op_t op_type>
+        struct binary_operation_t {
+            Ret operator()(const Variable& a, const Variable& b, ExtraArgs... args) const;
+            binary_operation_t() {}
+        };
+    };
+    template <Variable(&Op)(const Variable&, const Variable&), op_t op_type>
+    using binary_operation = binary_operation_generic<Variable>::binary_operation_t<Op, op_type>;
+    //Now, declare the underlying methods that do the real computation
+    //
+    //Precondition for all these: types of operands must be identical
+    //Bitwise Operations
+    static Variable And_(const Variable&, const Variable&);
+    static Variable Nand_(const Variable&, const Variable&);
+    static Variable Or_(const Variable&, const Variable&);
+    static Variable Nor_(const Variable&, const Variable&);
+    static Variable Xor_(const Variable&, const Variable&);
+    static Variable Xnor_(const Variable&, const Variable&);
+    //Arithmatic Operations
+    static Variable Add_(const Variable&, const Variable&);
+    static Variable Sub_(const Variable&, const Variable&);
+    static Variable Shl_(const Variable&, const Variable&);
+    static Variable Shr_(const Variable&, const Variable&);
+    static Variable Mul_full_(const Variable&, const Variable&);
+    static Variable Mul_(const Variable& a, const Variable& b) {
+        return Mul_full(a, b).cast(a.getTypeInfo()); //implicitly truncate
     }
-    bool sign() const {
-        return type < 0;
-    }
-    bool isBit() const {
-        return type == 0;
-    }
-    using op_t = var_ptr(Variable::*)(const Variable&) const;
-    virtual var_ptr do_cast(int) const = 0;
-    virtual BitVar isZero() const = 0;
-    //begin list of operations:
-    virtual var_ptr Neg() const = 0;
-    virtual var_ptr Minus() const = 0;
-    virtual var_ptr Promote() const = 0;
-    virtual var_ptr And(const Variable&) const = 0;
-    virtual var_ptr Or(const Variable&) const = 0;
-    virtual var_ptr Xor(const Variable&) const = 0;
-    virtual var_ptr Add(const Variable&) const = 0;
-    virtual var_ptr Sub(const Variable&) const = 0;
-    virtual var_ptr Mul(const Variable&) const = 0;
-    virtual var_ptr Shr(const Variable&) const = 0;
-    virtual var_ptr Shr(unsigned) const = 0;
-    virtual var_ptr Shl(const Variable&) const = 0;
-    virtual var_ptr Shl(unsigned) const = 0;
-    virtual var_ptr Less(const Variable&) const = 0;
-    virtual var_ptr Equal(const Variable&) const = 0;
-    virtual var_ptr Mask(const BitVar&) const = 0;
-    virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const = 0;
-    //end operations
-    //pseudo-operations, implemented in terms of actual operaitons
-    var_ptr Not() const;
-    var_ptr LogAnd(const Variable& v) const;
-    var_ptr LogOr(const Variable& v) const;
-    var_ptr Greater(const Variable& a) const {
-        return GreaterEq(a)->And(*(Equal(a)->Not()));
-    }
-    var_ptr LessEq(const Variable& a) const {
-        return Less(a)->Or(*(Equal(a)));
-    }
-    var_ptr GreaterEq(const Variable& a) const {
-        return Less(a)->Not();
-    }
-    var_ptr NotEq(const Variable& a) const {
-        return Equal(a)->Not();
-    }
-    var_ptr Div(const Variable& v) const {
-        var_ptr ret;
-        DivMod(v, &ret, nullptr);
-        return std::move(ret);
-    }
-    var_ptr Mod(const Variable& v) const {
-        var_ptr ret;
-        DivMod(v, nullptr, &ret);
-        return std::move(ret);
-    }
-protected:
-    Variable(const Variable& v) : type(v.type) {}
-    virtual std::unique_ptr<Variable> clone() const = 0;
+    static void DivRem_(const Variable&, const Variable&, Variable*, Variable*);
+    //Comparisons
+    static Variable Less_(const Variable&, const Variable&);
+    static Variable Equal_(const Variable&, const Variable&);
+    //Ternary operator
+    static Variable Ternary_(const Variable&, const Variable&, const Variable&);
+    static const binary_operation_generic<Variable, const Variable&>::
+        binary_operation_t<Ternary_, op_t::ternary> do_ternary;
 public:
-    template <class Derived, int Type>
-    class Base;
-    template <class Derived, int Type>
-    class Base_base;
-    template <class Derived, int Type>
-    friend class Base;
-    template <class Derived, int Type>
-    friend class Base_base;
-    friend class DynVar;
-    static std::unique_ptr<Variable> create(const Variable& v) {
-        return v.clone();
-    }
-    template <class... Args>
-    Variable(const std::weak_ptr<Circuit::impl>& c, int t) :
-        circuit(c), type(t) {}
-    virtual ~Variable() {}
     const std::weak_ptr<Circuit::impl>& getCircuit() const {
         return circuit;
     }
-};
-
-//define Type as 0 for a bit, N for uintN_t, -N for intN_t
-template <class Derived, int Type>
-class Variable::Base_base : public Variable {
-    template <class T, int I>
-    friend class Variable::Base;
-    friend class Variable;
-public:
-    static constexpr unsigned numBits() {
-        return (Type == 0) ? 1 : (unsigned)(
-                (Type < 0) ? -Type : Type);
+    unsigned size() const {
+        return bits.size();
     }
-    typedef std::array<Circuit::Value, numBits()> BitArr;
-    template <class... Args>
-    Base_base(const std::weak_ptr<Circuit::impl>& c, Args&&... args) :
-        Variable(c, Type), bits(std::forward<Args>(args)...) {}
-    Base_base(const Base_base<Derived, Type>&) = default;
-    std::shared_ptr<Derived> clone_shared() const {
-        return std::make_shared<Derived>(CAST(*this));
+    bool sign() const {
+        return is_signed;
     }
-    BitArr& getBits() {
-        return bits;
+    bool isBit() const {
+        return bits.size() == 1;
     }
-    const BitArr& getBits() const {
-        return bits;
+    TypeInfo getTypeInfo() const {
+        if (isBit()) {
+            return TypeInfo::createBit();
+        }
+        else {
+            return TypeInfo{sign(), (int)size()};
+        }
     }
-private:
-    virtual var_ptr And(const Variable& v) const {
-        return Derived::And(CAST(*this), CAST(v)).clone();
+    Variable(const Argument&);
+    Variable(const Variable&);
+    explicit Variable(const Circuit::Value& v) : circuit{v.getCircuit()}, bits{v}, is_signed{false} {}
+    template <class Int>
+    Variable(Int, const std::weak_ptr<Circuit::impl>&, TypeInfo = TypeInfo::create<Int>());
+    //provide factory method to allow explicitly passing template param.
+    template <class Int>
+    static Variable create(Int i, const std::weak_ptr<Circuit::impl>& c) {
+        return Variable{i, c};
     }
-    virtual var_ptr Or(const Variable& v) const {
-        return Derived::Or(CAST(*this), CAST(v)).clone();
+    template <class Int>
+    Variable getLiteral(Int i) const {
+        return create<Int>(i, getCircuit());
     }
-    virtual var_ptr Xor(const Variable& v) const {
-        return Derived::Xor(CAST(*this), CAST(v)).clone();
+    void overwrite(const Variable& v) {
+        circuit = v.circuit;
+        is_signed = v.is_signed;
+        bits = v.bits;
     }
-    BitArr bits;
-    static const Derived& CAST(const Variable& v) {
-        assert(v.type == Type);
-        return static_cast<const Derived&>(v);
+    void overwrite(Variable&& v) {
+        circuit = std::move(v.circuit);
+        is_signed = v.is_signed;
+        bits = std::move(v.bits);
     }
-protected:
-    std::unique_ptr<Variable> clone() const {
-        return std::make_unique<Derived>(CAST(*this));
-    }
-};
-
-template <class Derived, int Type>
-class Variable::Base : public Variable::Base_base<Derived, Type> {
-    virtual var_ptr Add(const Variable& v) const {
-        return Derived::Add(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Sub(const Variable& v) const {
-        return Derived::Sub(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Mul(const Variable& v) const {
-        return Derived::Mul(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Shr(unsigned u) const {
-        return Derived::Shr(CAST(*this), u).clone();
-    }
-    virtual var_ptr Shr(const Variable& v) const {
-        return Derived::Shr(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Shl(unsigned u) const {
-        return Derived::Shl(CAST(*this), u).clone();
-    }
-    virtual var_ptr Shl(const Variable& v) const {
-        return Derived::Shl(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Neg() const {
-        return Derived::Not(CAST(*this)).clone();
-    }
-    virtual var_ptr Less(const Variable& v) const {
-        return Derived::Less(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Equal(const Variable& v) const {
-        return Derived::Equal(CAST(*this), CAST(v)).clone();
-    }
-    virtual var_ptr Mask(const BitVar&) const;
-    virtual void DivMod(const Variable& d, var_ptr* qp, var_ptr* rp) const {
-        Derived q(this->getCircuit());
-        Derived r(this->getCircuit());
-        Derived::DivRem(CAST(*this), CAST(d), &q, &r);
-        if (qp) *qp = q.clone();
-        if (rp) *rp = r.clone();
-    }
-    virtual var_ptr Minus() const {
-        return Derived::Minus(CAST(*this)).clone();
-    }
-    virtual var_ptr Promote() const {
-        return Derived::Promote(CAST(*this)).clone();
-    }
-    std::unique_ptr<Variable> do_cast(int) const;
-public:
-    using Base_base<Derived, Type>::Base_base;
-    using Base_base<Derived, Type>::CAST;
-};
-
-template <>
-class Variable::Base<BitVar, 0> : public Variable::Base_base<BitVar, 0> {
-    virtual var_ptr Add(const Variable&) const;
-    virtual var_ptr Sub(const Variable&) const;
-    virtual var_ptr Mul(const Variable&) const;
-    virtual var_ptr Shr(const Variable&) const;
-    virtual var_ptr Shl(const Variable&) const;
-    virtual var_ptr Shr(unsigned) const;
-    virtual var_ptr Shl(unsigned) const;
-    virtual var_ptr Less(const Variable&) const;
-    virtual var_ptr Equal(const Variable&) const;
-    virtual var_ptr Neg() const;
-    virtual var_ptr Mask(const BitVar&) const;
-    virtual void DivMod(const Variable&, var_ptr*, var_ptr*) const;
-    virtual var_ptr Minus() const;
-    virtual var_ptr Promote() const;
-    std::unique_ptr<Variable> do_cast(int) const;
-public:
-    using Base_base<BitVar, 0>::Base_base;
-    using Base_base<BitVar, 0>::CAST;
-};
-
-class BitArgument;
-class BitVar : public Variable::Base<BitVar, 0> {
-private:
-    //compatibility
-    BitVar(const std::weak_ptr<Circuit::impl>&);
-    typedef Variable::Base<BitVar, 0> Base;
-public:
-    //for compatibility purposes
-    typedef bool int_type;
-    BitVar(const BitArgument&);
-    BitVar(const BitVar&);
-    explicit BitVar(const Circuit::Value&);
-    BitVar(bool, const std::weak_ptr<Circuit::impl>&);
-    Circuit::Value& getBit();
-    const Circuit::Value& getBit() const;
-    static BitVar Not(const BitVar&);
-    static BitVar And(const BitVar&, const BitVar&);
-    static BitVar Nand(const BitVar&, const BitVar&);
-    static BitVar Or(const BitVar&, const BitVar&);
-    static BitVar Nor(const BitVar&, const BitVar&);
-    static BitVar Xor(const BitVar&, const BitVar&);
-    static BitVar Xnor(const BitVar&, const BitVar&);
-    static BitVar MultiAnd(const std::vector<BitVar>&);
-    static BitVar MultiOr(const std::vector<BitVar>&);
-    static BitVar FromDynamic(const DynVar&);
-    BitVar& operator=(const BitVar& b);
-    BitVar isZero() const {
-        return Not(*this);
-    }
-    BitVar operator!() const {
-        return Not(*this);
-    }
-    BitVar operator~() const {
-        return Not(*this);
-    }
-    BitVar& operator&=(const BitVar& v) {
-        return *this = *this & v;
-    }
-    BitVar& operator|=(const BitVar& v) {
-        return *this = *this | v;
-    }
-    BitVar& operator^=(const BitVar& v) {
-        return *this = *this ^ v;
-    }
-    BitVar operator&(const BitVar& v) const {
-        return And(*this, v);
-    }
-    BitVar operator&&(const BitVar& v) const {
-        return And(*this, v);
-    }
-    BitVar operator||(const BitVar& v) const {
-        return Or(*this, v);
-    }
-    BitVar operator|(const BitVar& v) const {
-        return Or(*this, v);
-    }
-    BitVar operator^(const BitVar& v) const {
-        return Xor(*this, v);
-    }
-    BitVar operator==(const BitVar& v) const {
-        return Xnor(*this, v);
-    }
-    BitVar operator!=(const BitVar& v) const {
-        return Xor(*this, v);
-    }
-    int getID() const;
-};
-
-template <bool Signed, unsigned N>
-class IntArg;
-
-constexpr int getTypeVal(bool Signed, unsigned N) {
-    return Signed ? -((int)N) : N;
-}
-
-template <bool B, bool Signed, unsigned N>
-struct promote_t_ {
-    typedef IntVar<true, Variable::int_size> type;
-    static constexpr bool sign = true;
-    static constexpr unsigned size = Variable::int_size;
-    static type promote(const IntVar<Signed, N>& c);
-};
-
-template <bool Signed, unsigned N>
-struct promote_t_<false, Signed, N> {
-    typedef IntVar<Signed, N> type;
-    static constexpr bool sign = Signed;
-    static constexpr unsigned size = N;
-    static type promote(const IntVar<Signed, N>& c);
-};
-
-//NOTE:  The bits here are stored little-endian
-template <bool Signed, unsigned N>
-class IntVar : public Variable::Base<IntVar<Signed, N>, getTypeVal(Signed, N)> {
-    template <bool NewSigned, unsigned NewN>
-    friend class IntVar;
-    template <class T, int I>
-    friend class Variable::Base;
-private:
-    typedef Variable::Base<IntVar<Signed, N>, getTypeVal(Signed, N)> Base;
-    constexpr static unsigned multiply_limit = 128;
-    static constexpr auto promote = promote_t_<(N < Variable::int_size), Signed, N>::promote;
-public:
-    static constexpr unsigned numbits = N;
-    static constexpr bool issigned = Signed;
-    typedef IntegerType<Signed, N> int_type;
-    typedef IntVar<Signed, N> this_t;
-    typedef IntArg<Signed, N> arg_t;
-    typedef typename promote_t_<(N < Variable::int_size), Signed, N>::type promote_t;
-    IntVar(const arg_t&);
-    IntVar(const this_t&);
-    IntVar(const BitVar&);
-    IntVar(int_type, const std::weak_ptr<Circuit::impl>&);
-    static this_t Negative(const this_t& a) {
-        this_t zero(0, a.getCircuit());
+    //Begin operations
+    static Variable MultiOr(const std::vector<Variable>&);
+    static Variable MultiAnd(const std::vector<Variable>&);
+    //Unary operations
+    static Variable Negative(const Variable& a) {
+        Variable zero(0, a.getCircuit(), a.getTypeInfo());
         return zero - a;
     }
-    static this_t Not(const this_t&);
-    static this_t And(const this_t&, const this_t&);
-    static this_t Nand(const this_t&, const this_t&);
-    static this_t Or(const this_t&, const this_t&);
-    static this_t Nor(const this_t&, const this_t&);
-    static this_t Xor(const this_t&, const this_t&);
-    static this_t Xnor(const this_t&, const this_t&);
-    static this_t MultiOr(const std::vector<this_t>&);
-    static this_t MultiAnd(const std::vector<this_t>&);
-    static this_t Add(const this_t&, const this_t&);
-    static this_t Sub(const this_t&, const this_t&);
-    static this_t Shl(const this_t&, unsigned);
-    static this_t Shl(const this_t&, const this_t&);
-    static this_t Shr(const this_t&, unsigned);
-    static this_t Shr(const this_t&, const this_t&);
-    static BitVar Less(const this_t&, const this_t&);
-    static BitVar Greater(const this_t&, const this_t&);
-    static BitVar LessEq(const this_t&, const this_t&);
-    static BitVar GreaterEq(const this_t&, const this_t&);
-    static BitVar Equal(const this_t&, const this_t&);
-    static BitVar Equal(const this_t&, int_type);
-    static BitVar NotEq(const this_t&, const this_t&);
-    static BitVar NotEq(const this_t&, int_type);
-    static BitVar LogAnd(const this_t& a, const this_t& b) {
-        return !(a.isZero()) & !(b.isZero());
-    }
-    static BitVar LogOr(const this_t& a, const this_t& b) {
-        return !(a.isZero()) | !(b.isZero());
-    }
-    static promote_t Minus(const this_t& a) {
+    static Variable Not(const Variable&);
+    static Variable Minus(const Variable& a) {
         return Promote(Negative(a));
     }
-    static promote_t Promote(const this_t& a) {
-        return promote(a);
-    }
-    template <unsigned X = N>
-    static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
-    ::type Mul_full(const this_t&, const this_t&);
-    template <unsigned X = N>
-    static typename std::enable_if<(X >= multiply_limit), IntVar<Signed, N>>
-    ::type Mul_full(const this_t& a, const this_t& b) {
-        assert(false); //can't do this
+    static Variable Promote(const Variable& a) {
+        if (a.size() < int_size) {
+            return a.cast(TypeInfo(true, int_size));
+        }
         return a;
     }
-    static this_t Mul(const this_t& a, const this_t& b) {
-        return Mul_full(a, b).template cast<Signed, N>(); //implicitly truncate
+    //Bitwise Operations
+    static const binary_operation<And_, op_t::logic> And;
+    static const binary_operation<Nand_, op_t::logic> Nand;
+    static const binary_operation<Or_, op_t::logic> Or;
+    static const binary_operation<Nor_, op_t::logic> Nor;
+    static const binary_operation<Xor_, op_t::logic> Xor;
+    static const binary_operation<Xnor_, op_t::logic> Xnor;
+    //Arithmatic Operations
+    static const binary_operation<Add_, op_t::arith> Add;
+    static const binary_operation<Sub_, op_t::arith> Sub;
+    static const binary_operation<Shl_, op_t::arith> Shl_proxy;
+    static Variable Shl(const Variable&, unsigned);
+    static Variable Shl(const Variable& v, const Variable& i) {
+        return Shl_proxy(v, i);
     }
-    static this_t generateMask(const BitVar&);
-    static this_t Ternary(const BitVar&, const this_t&, const this_t&);
-    static this_t Ternary(const Circuit::Value& a, const this_t& b, const this_t& c) {
-        return Ternary(BitVar(a), b, c); //not optimal, but w/e
+    static const binary_operation<Shr_, op_t::arith> Shr_proxy;
+    static Variable Shr(const Variable&, unsigned);
+    static Variable Shr(const Variable& v, const Variable& i) {
+        return Shr_proxy(v, i);
     }
-    static void DivRem(const this_t&, const this_t&, this_t*, this_t*);
-    this_t abs() const {
-        if (Signed) {
-            return Ternary(this->getBits()[N-1], Negative(*this), *this);
+    static const binary_operation<Mul_full_, op_t::arith> Mul_full;
+    static const binary_operation<Mul_, op_t::arith> Mul;
+    static const binary_operation_generic<void, Variable*, Variable*>::
+        binary_operation_t<DivRem_, op_t::arith> DivRem;
+    static Variable Div(const Variable& d, const Variable& v) {
+        Variable x(d.getCircuit(), d.getTypeInfo());
+        DivRem(d, v, &x, nullptr);
+        return std::move(x);
+    }
+    static Variable Rem(const Variable& d, const Variable& v) {
+        Variable x(d.getCircuit(), d.getTypeInfo());
+        DivRem(d, v, nullptr, &x);
+        return std::move(x);
+    }
+    //Comparisons
+    static const binary_operation<Less_, op_t::comp> Less_proxy;
+    static const binary_operation<Equal_, op_t::comp> Equal_proxy;
+    static Variable Less(const Variable& a, const Variable& b) {
+        return Less_proxy(a, b);
+    }
+    static Variable Greater(const Variable&, const Variable&);
+    static Variable LessEq(const Variable&, const Variable&);
+    static Variable GreaterEq(const Variable&, const Variable&);
+    static Variable Equal(const Variable& a, const Variable& b) {
+        return Equal_proxy(a, b);
+    }
+    /* Not worth the trouble...
+    template <class Int>
+    static Variable Equal(const Variable&, Int);
+    template <class Int>
+    static Variable NotEq(const Variable& v, Int i) {
+        return !Equal(v, i);
+    }
+    */
+    static Variable NotEq(const Variable&, const Variable&);
+    //Logical Operations
+    static Variable LogAnd(const Variable& a, const Variable& b) {
+        return a.asBit() & b.asBit();
+    }
+    static Variable LogOr(const Variable& a, const Variable& b) {
+        return a.asBit() | b.asBit();
+    }
+    static Variable generateMask(const Variable&, TypeInfo);
+    Variable generateMask(const Variable&) const;
+    //Ternary Operator
+    static Variable Ternary(const Variable& a, const Variable& b, const Variable& c) {
+        return do_ternary(b, c, a); //have to change the order so that binary_operator will work as desired
+    }
+    static Variable Ternary(const Circuit::Value& a, const Variable& b, const Variable& c) {
+        return Ternary(Variable(a), b, c); //not optimal, but w/e
+    }
+    Variable abs() const {
+        if (is_signed) {
+            return Ternary(bits[size()-1], Negative(*this), *this);
         }
         else {
             return *this;
         }
     }
-    this_t& operator=(const this_t& b);
-    this_t operator~() const {
+    Variable& operator=(const Variable& b);
+    Variable operator!() const {
+        return isZero();
+    }
+    Variable operator~() const {
         return Not(*this);
     }
-    promote_t operator-() const {
+    Variable operator-() const {
         return Minus(*this);
     }
-    promote_t operator+() const {
+    Variable operator+() const {
         return Promote(*this);
     }
-    this_t& operator&=(const this_t& v) {
+    Variable& operator&=(const Variable& v) {
         return *this = *this & v;
     }
-    this_t& operator|=(const this_t& v) {
+    Variable& operator|=(const Variable& v) {
         return *this = *this | v;
     }
-    this_t& operator^=(const this_t& v) {
+    Variable& operator^=(const Variable& v) {
         return *this = *this ^ v;
     }
-    this_t& operator+=(const this_t& v) {
+    Variable& operator+=(const Variable& v) {
         return *this = *this + v;
     }
-    this_t& operator-=(const this_t& v) {
+    Variable& operator-=(const Variable& v) {
         return *this = *this - v;
     }
-    this_t& operator<<=(const this_t& v) {
+    Variable& operator<<=(const Variable& v) {
         return *this = *this << v;
     }
-    this_t& operator<<=(int_type i) {
+    Variable& operator<<=(unsigned i) {
         return *this = *this << i;
     }
-    this_t& operator>>=(const this_t& v) {
-        return *this = *this >> v;
-    }
-    this_t& operator>>=(int_type i) {
-        return *this = *this >> i;
-    }
-    this_t& operator*=(const this_t& v) {
-        return *this = *this * v;
-    }
-    this_t& operator/=(const this_t& v) {
-        return *this = *this / v;
-    }
-    this_t& operator%=(const this_t& v) {
-        return *this = *this % v;
-    }
-    this_t operator&(const this_t& v) const {
-        return And(*this, v);
-    }
-    this_t operator|(const this_t& v) const {
-        return Or(*this, v);
-    }
-    this_t operator^(const this_t& v) const {
-        return Xor(*this, v);
-    }
-    this_t operator+(const this_t& v) const {
-        return Add(*this, v);
-    }
-    this_t operator-(const this_t& v) const {
-        return Sub(*this, v);
-    }
-    this_t operator>>(int_type i) const {
-        return Shr(*this, i);
-    }
-    this_t operator>>(const this_t& v) const {
-        return Shr(*this, v);
-    }
-    this_t operator<<(int_type i) const {
+    Variable operator<<(unsigned i) const {
         return Shl(*this, i);
     }
-    this_t operator<<(const this_t& v) const {
-        return Shl(*this, v);
+    Variable& operator>>=(const Variable& v) {
+        return *this = *this >> v;
     }
-    this_t operator*(const this_t& v) const {
-        return Mul(*this, v);
+    Variable& operator>>=(unsigned i) {
+        return *this = *this >> i;
     }
-    this_t operator/(const this_t& v) const {
-        this_t x(this->getCircuit());
-        DivRem(*this, v, &x, nullptr);
-        return std::move(x);
+    Variable operator>>(unsigned i) const {
+        return Shr(*this, i);
     }
-    this_t operator%(const this_t& v) const {
-        this_t x(this->getCircuit());
-        DivRem(*this, v, nullptr, &x);
-        return std::move(x);
+    Variable& operator*=(const Variable& v) {
+        return *this = *this * v;
     }
-    BitVar operator==(const this_t& v) const {
-        return Equal(*this, v);
+    Variable& operator/=(const Variable& v) {
+        return *this = *this / v;
     }
-    BitVar operator==(int_type n) const {
-        return Equal(*this, n);
+    Variable& operator%=(const Variable& v) {
+        return *this = *this % v;
     }
-    BitVar isZero() const {
-        return BitVar(::MultiOr(this->getBits()));
+    Variable isZero() const {
+        if (isBit()) {
+            return Variable(::Not(bits[0]));
+        }
+        return Variable(::MultiOr(bits));
     }
-    BitVar operator!=(int_type n) const {
-        return NotEq(*this, n);
+    Variable asBit() const {
+        if (isBit()) {
+            return *this;
+        }
+        return !isZero();
     }
-    BitVar operator!=(const this_t& v) const {
-        return NotEq(*this, v);    
-    }
-    BitVar operator<(const this_t& v) const {
-        return Less(*this, v);
-    }
-    BitVar operator>=(const this_t& v) const {
-        return GreaterEq(*this, v);
-    }
-    BitVar operator<=(const this_t& v) const {
-        return LessEq(*this, v);
-    }
-    BitVar operator>(const this_t& v) const {
-        return Greater(*this, v);
-    }
-    BitVar operator&&(const this_t& a) const {
-        return LogAnd(*this, a);
-    }
-    BitVar operator||(const this_t& a) const {
-        return LogOr(*this, a);
-    }
-    BitVar isNeg() const {
-        if (Signed) {
-            return BitVar(this->getBits()[N-1]);
+    Variable isNeg() const {
+        if (sign()) {
+            return Variable(bits[size()-1]);
         }
         else {
-            return BitVar(false, this->getCircuit());
+            return Variable(Circuit::getLiteralFalse(getCircuit()));
         }
     }
-    template <bool NewSigned, unsigned NewN>
-    IntVar<NewSigned, NewN> cast() const;
+    Variable cast(TypeInfo) const;
 private:
-    static this_t mask_all(const this_t&, const BitVar&);
-    template <class... Args>
-    explicit IntVar(const std::weak_ptr<Circuit::impl>& c, Args&&... args) 
-        : Base(c, std::forward<Args>(args)...) {}
+    static Variable mask_all(const Variable&, const Variable&);
     template <class Op>
-    void binary_transform(const this_t&, const this_t&, Op);
+    void binary_transform(const Variable&, const Variable&, Op);
     template <class Op>
-    void variadic_transform(const std::vector<this_t>&, Op);
-    static this_t do_addition(const this_t&, const this_t&, bool, 
+    void variadic_transform(const std::vector<Variable>&, Op);
+    static Variable do_addition(const Variable&, const Variable&, bool, 
             Circuit::Value* = nullptr);
-    static void divrem_unsigned(const this_t&, const this_t&, this_t*, this_t*);
-    template <unsigned X = N>
-    static typename std::enable_if<(X < multiply_limit), IntVar<Signed, N*2>>
-    ::type mul_unsigned(const this_t&, const this_t&);
-    std::unique_ptr<Variable> int_cast(bool, unsigned) const;
+    static void divrem_unsigned(const Variable&, const Variable&, Variable*, Variable*);
+    static Variable mul_unsigned(const Variable&, const Variable&);
+    Variable(const std::weak_ptr<Circuit::impl>& c, TypeInfo info) :
+        circuit{c}, bits{(size_t)info.size()}, is_signed{info.sign()} {}
 };
 
-template <bool B, bool Signed, unsigned N>
-typename promote_t_<B, Signed, N>::type promote_t_<B, Signed, N>::promote(const IntVar<Signed, N>& c) {
-    return c.template cast<sign, size>();
-}
-
-template <bool Signed, unsigned N>
-typename promote_t_<false, Signed, N>::type promote_t_<false, Signed, N>::promote(const IntVar<Signed, N>& c) {
-    return c;
-}
-
-#include <CXXSat/Argument.h>
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const arg_t& arg) : 
-    Base(arg.getCircuit(), make_array<N>([&arg](std::size_t i) {
-                return Circuit::Value(*(arg.getInputs().at(i)));
-    })) {}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const this_t& var) : 
-    Base(var.getCircuit(), make_array<N>([&var](std::size_t i) {
-                return var.getBits()[i];
-    })) {}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(const BitVar& bit) : 
-    Base(bit.getCircuit(), make_array<N>([this, &bit](std::size_t i) {
-                return (i == 0) ? bit.getBit() : Circuit::getLiteralFalse(this->getCircuit());
-    })) {}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N>::IntVar(int_type t, const std::weak_ptr<Circuit::impl>& c) : 
-    Base(c, make_array<N>([t, &c](std::size_t i) {
-                return (t >> i) & 1 ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c);
-    })) {}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N>& IntVar<Signed, N>::operator=(const this_t& other) {
-    //TODO:  Assert circuits equal for all these
-    this->getBits() = other.getBits();
-    return *this;
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::generateMask(const BitVar& b) {
-    this_t x(b.getCircuit());
-    for (auto& bit : x.getBits()) {
-        bit = b.getBit();
-    }
-    return std::move(x);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Not(const this_t& a) {
-    this_t x(a.getCircuit());
-    auto& bits = x.getBits();
-    const auto& otherbits = a.getBits();
-    std::transform(begin(otherbits), end(otherbits), begin(bits),
-        [](const Circuit::Value& v) {
-            return ::Not(v);
-        }
-    );
-    return std::move(x);                
-};
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::Equal(const this_t& a, const this_t& b) {
-    const auto& i = Xnor(a, b);
-    return BitVar(::MultiAnd(i.getBits()));
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::Equal(const this_t& a, int_type b) {
-    this_t x(a);
-    auto& bits = x.getBits();
-    for (unsigned i = 0; i < N; ++i) {
-        if (!((b >> i) & 1)) {
-            bits[i] = ::Not(bits[i]);
-        }
-    }
-    return BitVar(::MultiAnd(bits));
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::NotEq(const this_t& a, int_type b) {
-    return !Equal(a, b);
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::NotEq(const this_t& a, const this_t& b) {
-    return !Equal(a, b);
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::Less(const this_t& a, const this_t& b) {
-    Circuit::Value carry_out;
-    //subtract *this - t, get the carry
-    auto comparison = do_addition(a, ~b, true, &carry_out);
-    if (Signed) {
-        //if signed, have to do a carry computation for the sign bits:
-        auto extra_bit = ::Xor(a.getBits()[N-1], ::Not(b.getBits()[N-1]));
-        return BitVar(::Xor(extra_bit, carry_out));
-    }
-    else {
-        //if unsigned, a carry indicates the result of the subtraction is
-        //positive or zero, so *this >= t
-        return BitVar(::Not(carry_out));
-    }
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::LessEq(const this_t& a, const this_t& b) {
-    return Less(a, b) | Equal(a, b);
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::Greater(const this_t& a, const this_t& b) {
-    return !LessEq(a, b);
-}
-
-template <bool Signed, unsigned N>
-BitVar IntVar<Signed, N>::GreaterEq(const this_t& a, const this_t& b) {
-    return !Less(a, b);
-}
-
-template <bool Signed, unsigned N>
-template <class Op>
-void IntVar<Signed, N>::binary_transform(const this_t& a, const this_t& b, Op op) {
-    auto& bits = this->getBits();
-    const auto& abits = a.getBits();
-    const auto& bbits = b.getBits();
-    std::transform(begin(abits), end(abits), begin(bbits), begin(bits), op);
-}
-
-template <bool Signed, unsigned N>
-template <class Op>
-void IntVar<Signed, N>::variadic_transform(const std::vector<this_t>& vec, Op op) {
-    unsigned num = vec.size();
-    std::vector<Circuit::Value> values(num);
-    auto& bits = this->getBits();
-    for (unsigned i = 0; i < N; ++i) {
-        for (unsigned j = 0; j < num; ++j) {
-            values[j] = vec[j].getBits()[i];
-        }
-        bits[i] = op(values);
-    }
-}
-    
-
-#define DEFINE_BINARY_OP(name) \
-    template <bool Signed, unsigned N> \
-    IntVar<Signed, N> IntVar<Signed, N>::name(const this_t& a, const this_t& b) { \
-        this_t x(a.getCircuit()); \
-        x.binary_transform(a, b, [](const Circuit::Value& y, const Circuit::Value& z) { \
-            return ::name(y, z); \
-        }); \
-        return std::move(x); \
-    }
-
-DEFINE_BINARY_OP(And);
-DEFINE_BINARY_OP(Nand);
-DEFINE_BINARY_OP(Or);
-DEFINE_BINARY_OP(Nor);
-DEFINE_BINARY_OP(Xor);
-DEFINE_BINARY_OP(Xnor);
-
-#undef DEFINE_BINARY_OP
-
-template <class Derived, int Type>
-Variable::var_ptr Variable::Base<Derived, Type>::Mask(const BitVar& b) const {
-    return Derived::mask_all(CAST(*this), b).clone();
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::MultiAnd(const std::vector<this_t>& vec) {
-    this_t x(vec.at(0).getCircuit());
-    x.variadic_transform(vec, ::MultiAnd<std::vector<Circuit::Value>>);
-    return std::move(x);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::MultiOr(const std::vector<this_t>& vec) {
-    this_t x(vec.at(0).getCircuit());
-    x.variadic_transform(vec, ::MultiOr<std::vector<Circuit::Value>>);
-    return std::move(x);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Add(const this_t& a, const this_t& b) {
-    return do_addition(a, b, false);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Sub(const this_t& a, const this_t& b) {
-    return do_addition(a, Not(b), true);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::mask_all(const this_t& a, const BitVar& b) {
-    this_t ret(a.getCircuit());
-    const auto& x = a.getBits();
-    const auto& y = b.getBit();
-    auto& z = ret.getBits();
-    for (unsigned i = 0; i < N; ++i) {
-        z[i] = ::And(x[i], y);
-    }
-    return std::move(ret);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::do_addition(const this_t& a, const this_t& b, bool c, Circuit::Value* carry_out) {
-    auto carry = c ? Circuit::getLiteralTrue(a.getCircuit()) 
-        : Circuit::getLiteralFalse(a.getCircuit());
-    this_t ret(a.getCircuit());
-    auto& x = a.getBits();
-    auto& y = b.getBits();
-    auto& z = ret.getBits();
-    for (unsigned i = 0; i < N; ++i) {
-        std::tie(z[i], carry) = FullAdder(x[i], y[i], std::move(carry));
-    }
-    if (carry_out) {
-        *carry_out = std::move(carry);
-    }
-    return std::move(ret);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Shl(const this_t& t, unsigned n) {
-    //left shift
-    this_t ret(t.getCircuit());
-    auto& t_bits = t.getBits();
-    auto& bits = ret.getBits();
-    unsigned i = 0;
-    for (; i < n; ++i) {
-        bits[i] = Circuit::getLiteralFalse(t.getCircuit());
-    }
-    for (; i < N; ++i) {
-        bits[i] = t_bits[i - n];
-    }
-    return std::move(ret);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Shl(const this_t& t, const this_t& n) {
-    //left shift
-    std::vector<IntVar<Signed, N>> integers;
-    for (int_type i = 0; (unsigned)i < N; ++i) {
-        auto iseq = (n == i);
-        integers.push_back(mask_all(Shl(t, (unsigned)i), iseq));
-    }
-    return MultiOr(integers);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Shr(const this_t& t, unsigned n) {
-    //right shift
-    this_t ret(t.getCircuit());
-    auto& t_bits = t.getBits();
-    auto& bits = ret.getBits();
-    unsigned i = 0;
-    for (; i < n; ++i) {
-        if (Signed) {
-            bits[(N - 1) - i] = t_bits[N - 1];
-        }
-        else {
-            bits[(N - 1) - i] = Circuit::getLiteralFalse(t.getCircuit());
-        }
-    }
-    for (; i < N; ++i) {
-        bits[(N - 1) - i] = t_bits[(N - 1) - (i - n)];
-    }
-    return std::move(ret);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Shr(const this_t& t, const this_t& n) {
-    //right shift
-    std::vector<IntVar<Signed, N>> integers;
-    std::vector<BitVar> bits;
-    for (int_type i = 0; (unsigned)i < N; ++i) {
-        auto iseq = (n == i);
-        integers.push_back(mask_all(Shr(t, (unsigned)i), iseq));
-        bits.push_back(iseq);
-    }
-    if (Signed) {
-        //this is Undefined Behavior, but is the most intuitive result
-        integers.push_back(mask_all(this_t((int_type)-1, t.getCircuit()), !(BitVar::MultiOr(bits))));
-    }
-    return MultiOr(integers);
-}
-
-template <bool Signed, unsigned N>
-IntVar<Signed, N> IntVar<Signed, N>::Ternary(const BitVar& b, const this_t& t, const this_t& f) {
-    return mask_all(t, b) | mask_all(f, !b);
-}
-
-template <bool Signed, unsigned N>
-void IntVar<Signed, N>::DivRem(const this_t& val, const this_t& div,
-        this_t* quot, this_t* rem)
+template <class Int>
+Variable::Variable(Int t, const std::weak_ptr<Circuit::impl>& c, TypeInfo info) : 
+    Variable{c, info}
 {
-    //abs is noop for unsigned
-    divrem_unsigned(val.abs(), div.abs(), quot, rem);
-    if (Signed) {
-        if (rem) {
-            *rem = Ternary(val.isNeg(), Negative(*rem), *rem);
-        }
-        if (quot) {
-            *quot = Ternary(val.isNeg() ^ div.isNeg(), Negative(*quot), *quot);
-        }
-    }
-}
-
-template <bool Signed, unsigned N>
-void IntVar<Signed, N>::divrem_unsigned(const this_t& val, const this_t& div,
-        this_t* quot, this_t* rem)
-{
-    this_t q(val.getCircuit());
-    this_t r(0, val.getCircuit());
-    //handle division by zero in a somewhat sane manner
-    this_t mask = generateMask(div == 0);
-    for (unsigned i = 0; i < N; ++i) {
-        r <<= 1;
-        r.getBits()[0] = val.getBits()[N - 1 - i];
-        auto should_sub = r >= div;
-        q.getBits()[N - 1 - i] = should_sub.getBit();
-        r = Ternary(should_sub, r - div, r);
-    }
-    if (quot) {
-        *quot = std::move(q);
-    }
-    if (rem) {
-        *rem = std::move(r);
-    }
-}
-
-template <bool Signed, unsigned N>
-template <unsigned X>
-typename std::enable_if<(X < IntVar<Signed, N>::multiply_limit), IntVar<Signed, N*2>>
-::type IntVar<Signed, N>::Mul_full(const this_t& a, const this_t& b) {
-    auto ret = mul_unsigned(a.abs(), b.abs());
-    if (Signed) {
-        ret = IntVar<Signed, N*2>::Ternary(a.isNeg() ^ b.isNeg(), IntVar<Signed, N*2>::Negative(ret), ret);
-    }
-    return std::move(ret);
-}
-
-template <bool Signed, unsigned N>
-template <unsigned X>
-typename std::enable_if<(X < IntVar<Signed, N>::multiply_limit), IntVar<Signed, N*2>>
-::type IntVar<Signed, N>::mul_unsigned(const this_t& a, const this_t& b) {
-    auto x = a.cast<Signed, N*2>();
-    IntVar<Signed, N*2> ret((typename IntVar<Signed, N*2>::int_type)0, a.getCircuit());
-    auto& bits = b.getBits();
-    for (unsigned i = 0; i < N; ++i) {
-        ret = IntVar<Signed, N*2>::Ternary(bits[i], ret + x, ret);
-        x <<= (typename IntVar<Signed, N*2>::int_type)1;
-    }
-    return std::move(ret);
-}
-
-template <bool Signed, unsigned N>
-template <bool NewSigned, unsigned NewN>
-IntVar<NewSigned, NewN> IntVar<Signed, N>::cast() const {
-    IntVar<NewSigned, NewN> ret{this->getCircuit()};
-    if (NewN < N) {
-        for (unsigned i = 0; i < NewN; ++i) {
-            ret.getBits()[i] = this->getBits()[i];
+    auto numbits = sizeof(t)*8;
+    if (size() < numbits) {
+        for (unsigned i = 0; i < size(); ++i) {
+            bits[i] = ((t >> i) & 1) ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c);
         }
     }
     else {
         unsigned i;
-        for (i = 0; i < N; ++i) {
-            ret.getBits()[i] = this->getBits()[i];
+        for (i = 0; i < numbits; ++i) {
+            bits[i] = ((t >> i) & 1) ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c);
         }
-        for (; i < NewN; ++i) {
-            if (Signed) {
-                ret.getBits()[i] = this->getBits()[N-1];
+        for (; i < size(); ++i) {
+            if (sign()) {
+                bits[i] = ((t >> (numbits - 1)) & 1) ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c);
             }
             else {
-                ret.getBits()[i] = Circuit::getLiteralFalse(this->getCircuit());
+                bits[i] = Circuit::getLiteralFalse(this->getCircuit());
             }
         }
     }
-    return std::move(ret);
 }
 
-template <class Derived, int Type>
-std::unique_ptr<Variable> Variable::Base<Derived, Type>::do_cast(int newtype) const {
-    std::unique_ptr<Variable> ret;
-    if (newtype == 0) {
-        ret = (!(this->isZero())).clone();
+//please don't look at this method signature...
+template <class Ret, class... ExtraArgs>
+template <Ret(&Op)(const Variable&, const Variable&, ExtraArgs...), Variable::op_t op_type>
+Ret Variable::binary_operation_generic<Ret, ExtraArgs...>::binary_operation_t<Op, op_type>::
+operator()(const Variable& a, const Variable& b, ExtraArgs... args) const {
+    if (op_type == op_t::logic && a.isBit() && b.isBit()) {
+        //for bitwise operators on single bits, no need to convert
+        return Op(a, b, args...);
+    }
+    if (op_type == op_t::ternary && a.getTypeInfo() == b.getTypeInfo()) {
+        //for the ternary operator, follow special rule - no conversion if types identical
+        return Op(a, b, args...);
+    }
+    //otherwise, we have to perform the "usual arithmatic conversions"
+    unsigned op_size = std::max(a.size(), b.size());
+    bool op_sign;
+    if (a.sign() == b.sign()) {
+        op_sign = a.sign();
     }
     else {
-        return ((Derived*)this)->int_cast(newtype < 0, (unsigned)((newtype < 0) ? -newtype : newtype));
-    }
-    return ret;
-}
-
-template <bool Signed, unsigned N>
-std::unique_ptr<Variable> IntVar<Signed, N>::int_cast(bool sign, unsigned size) const {
-    if (sign) {
-        switch (size) {
-        case 8:
-            return this->template cast<true, 8>().clone();
-        case 16:
-            return this->template cast<true, 16>().clone();
-        case 32:
-            return this->template cast<true, 32>().clone();
-        case 64:
-            return this->template cast<true, 64>().clone();
-        default:
-            assert(false);
-            break;
+        //signedness differs
+        if (a.size() == b.size()) {
+            op_sign = false; //unsigned prevails if sizes equal
+        }
+        else {
+            op_sign = ((a.size() > b.size()) ? a : b).sign();
         }
     }
-    else {
-        switch (size) {
-        case 8:
-            return this->template cast<false, 8>().clone();
-        case 16:
-            return this->template cast<false, 16>().clone();
-        case 32:
-            return this->template cast<false, 32>().clone();
-        case 64:
-            return this->template cast<false, 64>().clone();
-        default:
-            assert(false);
-            break;
-        }
+    //however, all of that said:
+    if (op_size < int_size) {
+        //all values are converted to int
+        op_size = int_size;
+        op_sign = true;
     }
-    return nullptr; //can't happen
+    auto info = TypeInfo(op_sign, op_size);
+    const auto& new_a = (a.getTypeInfo() == info) ? a : a.cast(info);
+    const auto& new_b = (b.getTypeInfo() == info) ? b : b.cast(info);
+    return Op(new_a, new_b, args...);
 }
 
-extern template class IntVar<true, 8>;
-extern template class IntVar<false, 8>;
-extern template class IntVar<true, 16>;
-extern template class IntVar<false, 16>;
-extern template class IntVar<true, 32>;
-extern template class IntVar<false, 32>;
-extern template class IntVar<true, 64>;
-extern template class IntVar<false, 64>;
+template <class Op>
+void Variable::binary_transform(const Variable& a, const Variable& b, Op op) {
+    std::transform(begin(a.bits), end(a.bits), begin(b.bits), begin(bits), op);
+}
 
-typedef IntVar<true, 8> IntVar8;
-typedef IntVar<false, 8> UIntVar8;
-typedef IntVar<true, 16> IntVar16;
-typedef IntVar<false, 16> UIntVar16;
-typedef IntVar<true, 32> IntVar32;
-typedef IntVar<false, 32> UIntVar32;
-typedef IntVar<true, 64> IntVar64;
-typedef IntVar<false, 64> UIntVar64;
+template <class Op>
+void Variable::variadic_transform(const std::vector<Variable>& vec, Op op) {
+    unsigned num = vec.size();
+    std::vector<Circuit::Value> values(num);
+    for (unsigned i = 0; i < size(); ++i) {
+        for (unsigned j = 0; j < num; ++j) {
+            values[j] = vec[j].bits[i];
+        }
+        bits[i] = op(values);
+    }
+}
 
-
-/*
-template <class T, std::true_type = true>
-struct VarTypeMap_t {};
-
-template <>
-struct VarTypeMap_t<bool, true> {
-    typedef BitVar type;
-};
-
-template <class T>
-struct VarTypeMap_t<T, typename std::is_integral<T>::type> {
-    typedef typename IntVar<std::is_signed<T>::value, sizeof(T)*8>::type type;
-};
-
-template <class T>
-using VarTypeMap = typename VarTypeMap_t<T>::type;
-
+/* Not worth the trouble...
+template <class Int>
+Variable Variable::Equal(const Variable& a, Int b) {
+    if (sizeof(b)*8 > a.size()) {
+        auto shiftout = b >> a.size();
+        if (shiftout != 0 || shiftout != (Int)-1) {
+            //we're too big - no way we can be equal
+            return Variable(Circuit::getLiteralFalse(a.getCircuit()));
+        }
+    }
+    auto numbits = std::min(a.size(), 8*sizeof(b));
+    auto bits = std::vector<Circuit::Value>{a.size()};
+    unsigned i;
+    for (i = 0; i < numbits; ++i) {
+        if (!((b >> i) & 1)) {
+            bits[i] = ::Not(a.bits[i]);
+        }
+        else {
+            bits[i] = a.bits[i];
+        }
+    }
+    for (; i < a.size(); ++i) {
+        if (a.sign()) {
+            bits[i] = ::Xnor(a.bits[i], a.bits[numbits-1]);
+        }
+        else {
+            bits[i] = ::Not(a.bits[i]);
+        }
+    }
+    return Variable(::MultiAnd(bits));
+}
 */
+
+#define DEFINE_BINARY_OP(op, name) \
+    template <class Int> \
+    Variable operator op(const Variable& a, const Int& b) { \
+        return Variable::name(a, a.getLiteral(b)); \
+    } \
+    template <class Int> \
+    Variable operator op(const Int& a, const Variable& b) { \
+        return Variable::name(b.getLiteral(a), b); \
+    }
+
+DEFINE_BINARY_OP(+, Add);
+DEFINE_BINARY_OP(-, Sub);
+DEFINE_BINARY_OP(*, Mul);
+DEFINE_BINARY_OP(/, Div);
+DEFINE_BINARY_OP(%, Rem);
+DEFINE_BINARY_OP(&, And);
+DEFINE_BINARY_OP(&&, LogAnd);
+DEFINE_BINARY_OP(|, Or);
+DEFINE_BINARY_OP(||, LogOr);
+DEFINE_BINARY_OP(^, Xor);
+DEFINE_BINARY_OP(==, Equal);
+DEFINE_BINARY_OP(!=, NotEq);
+DEFINE_BINARY_OP(<, Less);
+DEFINE_BINARY_OP(>, Greater);
+DEFINE_BINARY_OP(<=, LessEq);
+DEFINE_BINARY_OP(>=, GreaterEq);
+
+#undef DEFINE_BINARY_OP
+
+//For << and >> we don't want to clobber the unsigned overload:
+
+template <class Int>
+Variable operator <<(const Int& a, const Variable& b) {
+    return Variable::Shl(b.getLiteral(a), b);
+}
+template <class Int>
+Variable operator >>(const Int& a, const Variable& b) {
+    return Variable::Shr(b.getLiteral(a), b);
+}
+
+template <class Int>
+Variable Circuit::getLiteral(Int i) const {
+    return Variable(i, pimpl_get_self());
+}
+
 #endif

@@ -6,12 +6,10 @@
 
 int main() {
     auto c = Circuit();
-    auto arg = c.addArgument<UIntArg32>();
-    auto x = arg->asValue();
-    auto y = c.getLiteral<UIntVar32>(0x1234);
-    auto z = (x * y) / y;
-    auto val = c.getLiteral<UIntVar32>(0x1337);
-    auto p = c.generateCNF(z == val);
+    auto arg = c.addArgument<uint32_t>();
+    auto x = arg.asValue();
+    auto z = (x * 0x1234U) / 0x1234U;
+    auto p = c.generateCNF(z == 0x1337U);
     std::cout << "CNF generated\n";
     //p.printDIMACS(std::cout);
     auto soln = p.solve();
@@ -19,7 +17,7 @@ int main() {
         std::cout << "SAT\n";
         std::cout << "arg: ";
         //std::cout << std::hex;
-        arg->print(std::cout, soln);
+        arg.print(std::cout, soln);
         std::cout << '\n';
     }
     else {
