@@ -1,45 +1,52 @@
 #ifndef SCOPE_H_INC
 #define SCOPE_H_INC
 
-#include <CXXSat/DynamicSat.h>
+#include <CXXSat/Circuit.h>
+#include <CXXSat/Variable.h>
+#include <CXXSat/FlexInt.h>
+
 #include <unordered_map>
 #include <string>
 #include <memory>
 #include <assert.h>
 
+#include "VarRef.h"
+
 class Scope {
 public:
-    Scope(DynCircuit&, bool sign, unsigned size);
+    Scope(Circuit&, TypeInfo info);
     Scope(Scope&);
-    Scope(Scope&, const DynVar&);
+    Scope(Scope&, const Variable&);
     Scope(Scope&&) = default;
     ~Scope();
-    DynVar& operator[](const std::string&);
-    DynVar* lookup(const std::string&);
-    DynVar getLiteral(bool, unsigned, unsigned long long = 0);
+    VarRef operator[](const std::string&);
+    Variable* lookup(const std::string&);
+    template <class Int>
+    Variable getLiteral(Int i) {
+        return circuit.getLiteral(i);
+    }
     template <class T>
-    DynVar& declare(const std::string&);
+    VarRef declare(const std::string&);
     template <class T>
-    DynVar& declare(const std::string&, T = T{});
-    DynVar& declare(const std::string&, bool, unsigned, const char*);
-    DynVar& declare(const std::string&, bool, unsigned, unsigned long long = 0);
-    DynVar& declare(const std::string&, bool, unsigned, const DynVar&);
-    DynVar& declare(const std::string&, const DynVar&);
-    void yield(const DynVar&);
+    VarRef declare(const std::string&, T = T{});
+    VarRef declare(const std::string&, FlexInt);
+    VarRef declare(const std::string&, TypeInfo, FlexInt);
+    VarRef declare(const std::string&, const Variable&);
+    void yield(const VarRef);
 private:
     Scope* parent;
-    std::unique_ptr<DynVar> cond;
-    DynCircuit& circuit;
-    std::unordered_map<std::string, DynVar> variables;
-    std::unordered_map<std::string, DynVar> parent_vars;
+    std::unique_ptr<Variable> cond;
+    Circuit& circuit;
+    std::unordered_map<std::string, Variable> variables;
+    std::unordered_map<std::string, Variable> parent_vars;
 };
 
 template <class T>
-DynVar& Scope::declare(const std::string& s, T val) {
+VarRef Scope::declare(const std::string& s, T val) {
     auto res = variables.insert(std::make_pair(
-            s, circuit.getLiteral<T>(val)));
+            s, circuit.getLiteral(val)));
     assert(res.second);
-    return res.first->second;
+    return VarRef{*this, res.first->second};
 }
 
 #endif

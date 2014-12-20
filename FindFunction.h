@@ -57,7 +57,7 @@ public:
         : func(fname), callback(cb) {}
     virtual clang::ASTConsumer* CreateASTConsumer(
             clang::CompilerInstance& compiler,
-            llvm::StringRef inFile)
+            llvm::StringRef/* inFile*/)
     {
         return new FindFunctionConsumer(&compiler.getASTContext(),
                 func, callback);

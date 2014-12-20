@@ -161,7 +161,7 @@ Variable Variable::Shl(const Variable& t, unsigned n) {
     //left shift
     Variable ret(t.getCircuit(), t.getTypeInfo());
     unsigned i = 0;
-    for (; i < n; ++i) {
+    for (; i < std::min(n, t.size()); ++i) {
         ret.bits[i] = Circuit::getLiteralFalse(t.getCircuit());
     }
     for (; i < t.size(); ++i) {
@@ -185,7 +185,7 @@ Variable Variable::Shr(const Variable& t, unsigned n) {
     //right shift
     Variable ret(t.getCircuit(), t.getTypeInfo());
     unsigned i = 0;
-    for (; i < n; ++i) {
+    for (; i < std::min(n, t.size()); ++i) {
         if (t.sign()) {
             ret.bits[(t.size() - 1) - i] = t.bits[t.size() - 1];
         }

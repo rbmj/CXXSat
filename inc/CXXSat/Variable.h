@@ -6,6 +6,7 @@
 #include <CXXSat/IntegerTypes.h>
 #include <CXXSat/Gates.h>
 #include <CXXSat/TypeInfo.h>
+#include <CXXSat/FlexInt.h>
 
 #include <array>
 #include <memory>
@@ -124,6 +125,9 @@ public:
     static Variable create(Int i, const std::weak_ptr<Circuit::impl>& c) {
         return Variable{i, c};
     }
+    static Variable getLiteral(FlexInt i, const std::weak_ptr<Circuit::impl>& c) {
+        return i.do_t([c](const auto& x) { return create(x, c); });
+    }
     template <class Int>
     Variable getLiteral(Int i) const {
         return create<Int>(i, getCircuit());
@@ -190,6 +194,12 @@ public:
         DivRem(d, v, nullptr, &x);
         return std::move(x);
     }
+    static Variable Inc(const Variable& i) {
+        return Add(i, i.getLiteral(FlexInt{1, i.getTypeInfo()}));
+    }
+    static Variable Dec(const Variable& i) {
+        return Sub(i, i.getLiteral(FlexInt{1, i.getTypeInfo()}));
+    }
     //Comparisons
     static const binary_operation<Less_, op_t::comp> Less_proxy;
     static const binary_operation<Equal_, op_t::comp> Equal_proxy;
@@ -247,6 +257,22 @@ public:
     }
     Variable operator+() const {
         return Promote(*this);
+    }
+    Variable& operator++() {
+        return *this = Inc(*this);
+    }
+    Variable operator++(int) {
+        Variable x{*this};
+        ++(*this);
+        return x;
+    }
+    Variable& operator--() {
+        return *this = Dec(*this);
+    }
+    Variable operator--(int) {
+        Variable x{*this};
+        --(*this);
+        return x;
     }
     Variable& operator&=(const Variable& v) {
         return *this = *this & v;

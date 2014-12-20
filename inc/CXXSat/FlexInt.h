@@ -10,7 +10,10 @@
 #include <CXXSat/TypeInfo.h>
 #include <CXXSat/IntegerTypes.h>
 
+class Variable;
+
 class FlexInt {
+    friend class Variable;
 private:
     union {
         uint8_t uint8;

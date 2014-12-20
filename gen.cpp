@@ -14,7 +14,12 @@
 
 #include "FindFunction.h"
 #include "Scope.h"
-#include <CXXSat/DynamicSat.h>
+#include "VarRef.h"
+
+#include <CXXSat/Argument.h>
+#include <CXXSat/Circuit.h>
+#include <CXXSat/FlexInt.h>
+#include <CXXSat/TypeInfo.h>
 
 void printAST(clang::Stmt* s, unsigned level = 0) {
     if (!s) return;
@@ -33,12 +38,12 @@ void parseReturnStmt(clang::ReturnStmt*, clang::ASTContext*, Scope&);
 void parseIfStmt(clang::IfStmt*, clang::ASTContext*, Scope&);
 void parseDecl(clang::DeclStmt*, clang::ASTContext*, Scope&);
 void parseVarDecl(clang::VarDecl*, clang::ASTContext*, Scope&);
-DynVar parseExpr(clang::Expr*, clang::ASTContext*, Scope&);
-DynVar parseUnaryOperator(clang::UnaryOperator*, clang::ASTContext*, Scope&);
-DynVar parseBinaryOperator(clang::BinaryOperator*, clang::ASTContext*, Scope&);
-DynVar parseCast(clang::CastExpr*, clang::ASTContext*, Scope&);
-DynVar parseDeclRef(clang::DeclRefExpr*, clang::ASTContext*, Scope&);
-DynVar parseIntLiteral(clang::IntegerLiteral*, clang::ASTContext*, Scope&);
+VarRef parseExpr(clang::Expr*, clang::ASTContext*, Scope&);
+VarRef parseUnaryOperator(clang::UnaryOperator*, clang::ASTContext*, Scope&);
+VarRef parseBinaryOperator(clang::BinaryOperator*, clang::ASTContext*, Scope&);
+VarRef parseCast(clang::CastExpr*, clang::ASTContext*, Scope&);
+VarRef parseDeclRef(clang::DeclRefExpr*, clang::ASTContext*, Scope&);
+VarRef parseIntLiteral(clang::IntegerLiteral*, clang::ASTContext*, Scope&);
 
 bool parseStmt(clang::Stmt* stmt, clang::ASTContext* con, Scope& scope) {
     if (!stmt) return true;
@@ -87,7 +92,7 @@ void parseIfStmt(clang::IfStmt* stmt, clang::ASTContext* con, Scope& pscope) {
     if (cvdecl) {
         parseVarDecl(cvdecl, con, scope);
     }
-    auto cond = parseExpr(stmt->getCond(), con, scope).asBool();
+    auto cond = parseExpr(stmt->getCond(), con, scope).asVariable().asBit();
     auto then_scope = Scope{scope, cond};
     parseStmt(stmt->getThen(), con, then_scope);
     auto else_scope = Scope{scope, !cond};
@@ -106,13 +111,13 @@ void parseVarDecl(clang::VarDecl* decl, clang::ASTContext* con, Scope& scope) {
     if (!(qualtype->isIntegerType())) assert(false);
     int size = con->getTypeInfo(qualtype).second;
     bool sign = qualtype->isSignedIntegerType();
-    auto var = scope.declare(decl->getNameAsString(), sign, size);
+    auto var = scope.declare(decl->getNameAsString(), TypeInfo{sign, size}, 0);
     if (decl->hasInit()) {
         var = parseExpr(decl->getInit(), con, scope);
     }
 }
 
-DynVar parseExpr(clang::Expr* expr, clang::ASTContext* con, Scope& scope) {
+VarRef parseExpr(clang::Expr* expr, clang::ASTContext* con, Scope& scope) {
     switch (expr->getStmtClass()) {
         case clang::Stmt::UnaryOperatorClass:
             return parseUnaryOperator((clang::UnaryOperator*)expr, con, scope);
@@ -133,40 +138,31 @@ DynVar parseExpr(clang::Expr* expr, clang::ASTContext* con, Scope& scope) {
     }
 }
 
-DynVar parseUnaryOperator(clang::UnaryOperator* expr, clang::ASTContext* con, Scope& scope) {
+VarRef parseUnaryOperator(clang::UnaryOperator* expr, clang::ASTContext* con, Scope& scope) {
     auto operand = parseExpr(expr->getSubExpr(), con, scope);
-    if (expr->isPostfix()) {
-        auto copy = operand.clone();
-        if (expr->isIncrementOp()) {
-            ++operand;
-        }
-        else {
-            --operand;
-        }
-        return copy;
-    }
-    else {
-        switch (expr->getOpcode()) {
-        case clang::UO_PreInc:
-            return ++operand;
-        case clang::UO_PreDec:
-            return --operand;
-        case clang::UO_Plus:
-            return +operand;
-        case clang::UO_Minus:
-            return -operand;
-        case clang::UO_Not:
-            return ~operand;
-        case clang::UO_LNot:
-            return !operand;
-        default:
-            assert(false);
-            return operand;
-        }
+    switch (expr->getOpcode()) {
+    case clang::UO_PreInc:
+        return ++operand;
+    case clang::UO_PostInc:
+        return operand++;
+    case clang::UO_PreDec:
+        return --operand;
+    case clang::UO_PostDec:
+        return operand++;
+    case clang::UO_Plus:
+        return +operand;
+    case clang::UO_Minus:
+        return -operand;
+    case clang::UO_Not:
+        return ~operand;
+    case clang::UO_LNot:
+        return !operand;
+    default:
+        throw 0;
     }
 }
 
-DynVar parseBinaryOperator(clang::BinaryOperator* expr, clang::ASTContext* con, Scope& scope) {
+VarRef parseBinaryOperator(clang::BinaryOperator* expr, clang::ASTContext* con, Scope& scope) {
     auto lhs = parseExpr(expr->getLHS(), con, scope);
     auto rhs = parseExpr(expr->getRHS(), con, scope);
     switch (expr->getOpcode()) {
@@ -245,75 +241,42 @@ DynVar parseBinaryOperator(clang::BinaryOperator* expr, clang::ASTContext* con, 
     }
 }
 
-DynVar parseCast(clang::CastExpr* expr, clang::ASTContext* con, Scope& scope) {
+VarRef parseCast(clang::CastExpr* expr, clang::ASTContext* con, Scope& scope) {
     auto type = expr->getType();
     assert(type->isIntegerType());
-    return parseExpr(expr->getSubExpr(), con, scope).cast(type->isSignedIntegerType(), con->getTypeInfo(type).second);
+    return parseExpr(expr->getSubExpr(), con, scope)
+        .cast(TypeInfo{type->isSignedIntegerType(), (int)con->getTypeInfo(type).second});
 }
 
-DynVar parseIntLiteral(clang::IntegerLiteral* expr, clang::ASTContext* con, Scope& scope) {
+VarRef parseIntLiteral(clang::IntegerLiteral* expr, clang::ASTContext* con, Scope& scope) {
     auto type = expr->getType();
     assert(type->isIntegerType());
     bool sign = type->isSignedIntegerType();
     unsigned size = con->getTypeInfo(type).second;
-    unsigned long long val = expr->getValue().getZExtValue();
-    return scope.getLiteral(sign, size, val);
+    FlexInt x = sign ?
+        expr->getValue().getSExtValue() :
+        expr->getValue().getZExtValue();
+    TypeInfo info{sign, (int)size};
+    return VarRef{scope, x.cast(info)};
 }
 
-DynVar parseDeclRef(clang::DeclRefExpr* expr, clang::ASTContext*, Scope& scope) {
+VarRef parseDeclRef(clang::DeclRefExpr* expr, clang::ASTContext*, Scope& scope) {
     return scope[expr->getNameInfo().getAsString()];
 }
 
 void parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
-    auto c = DynCircuit{};
+    auto c = Circuit{};
     auto return_type = decl->getReturnType();
     assert(return_type->isIntegerType());
-    auto scope = Scope{c, return_type->isSignedIntegerType(), con->getTypeInfo(return_type).second};
-    auto args = std::vector<DynArg>{};
+    auto scope = Scope{c, TypeInfo{return_type->isSignedIntegerType(), (int)con->getTypeInfo(return_type).second}};
+    auto args = std::vector<Argument>{};
     //add all arguments
     for (auto param : decl->parameters()) {
         auto qualtype = param->getTypeSourceInfo()->getType();
         if (qualtype->isIntegerType()) {
             int size = con->getTypeInfo(qualtype).second;
             bool sign = qualtype->isSignedIntegerType();
-            if (sign) {
-                switch (size) {
-                case 8:
-                    args.push_back(c.addArgument<int8_t>());
-                    break;
-                case 16:
-                    args.push_back(c.addArgument<int16_t>());
-                    break;
-                case 32:
-                    args.push_back(c.addArgument<int32_t>());
-                    break;
-                case 64:
-                    args.push_back(c.addArgument<int64_t>());
-                    break;
-                default:
-                    assert(false);
-                    break;
-                }
-            }
-            else {
-                switch (size) {
-                case 8:
-                    args.push_back(c.addArgument<uint8_t>());
-                    break;
-                case 16:
-                    args.push_back(c.addArgument<uint16_t>());
-                    break;
-                case 32:
-                    args.push_back(c.addArgument<uint32_t>());
-                    break;
-                case 64:
-                    args.push_back(c.addArgument<uint64_t>());
-                    break;
-                default:
-                    assert(false);
-                    break;
-                }
-            }
+            args.push_back(c.addArgument(TypeInfo{sign, size}));
             scope.declare(param->getNameAsString(), args.back().asValue());
         }
         else {
