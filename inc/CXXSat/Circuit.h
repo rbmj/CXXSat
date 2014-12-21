@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
+#include <map>
 #include <string>
 #include <assert.h>
 
@@ -143,7 +144,7 @@ public:
     }
 protected:
     std::shared_ptr<Node> from;
-    std::unordered_map<Node*, unsigned> to;
+    std::map<Node*, unsigned> to;
     std::weak_ptr<Circuit::impl> c;
     virtual bool setID(int) = 0;
 };
