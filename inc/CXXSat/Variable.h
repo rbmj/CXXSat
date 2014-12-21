@@ -117,6 +117,7 @@ public:
     }
     Variable(const Argument&);
     Variable(const Variable&);
+    Variable(Variable&&);
     explicit Variable(const Circuit::Value& v) : circuit{v.getCircuit()}, bits{v}, is_signed{false} {}
     template <class Int>
     Variable(Int, const std::weak_ptr<Circuit::impl>&, TypeInfo = TypeInfo::create<Int>());
@@ -245,7 +246,8 @@ public:
             return *this;
         }
     }
-    Variable& operator=(const Variable& b);
+    Variable& operator=(const Variable&);
+    Variable& operator=(Variable&&);
     Variable operator!() const {
         return isZero();
     }

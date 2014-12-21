@@ -9,7 +9,7 @@ add_executable(gen gen.cpp Scope.cpp VarRef.cpp)
 add_executable(FlexIntTest tests/FlexIntTest.cpp)
 add_executable(CircuitTest tests/CircuitTest.cpp)
 add_executable(IntegerTest tests/IntegerTest.cpp)
-set(CMAKE_CXX_FLAGS "-g -std=c++14 -Wall")
+set(CMAKE_CXX_FLAGS "-O2 -g -std=c++14 -Wall")
 
 target_link_libraries(FlexIntTest cxxsat minisat)
 target_link_libraries(CircuitTest cxxsat minisat)

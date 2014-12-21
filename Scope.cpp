@@ -26,6 +26,10 @@ Scope::~Scope() {
     }
 }
 
+VarRef Scope::return_value() {
+    return (*this)["_RETURN"];
+}
+
 Variable* Scope::lookup(const std::string& s) {
     auto it = variables.find(s);
     if (it != variables.end()) {

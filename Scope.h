@@ -33,6 +33,7 @@ public:
     VarRef declare(const std::string&, TypeInfo, FlexInt);
     VarRef declare(const std::string&, const Variable&);
     void yield(const VarRef);
+    VarRef return_value();
 private:
     Scope* parent;
     std::unique_ptr<Variable> cond;

@@ -8,13 +8,24 @@ Variable::Variable(const Argument& arg) :
     }, arg.size())}, is_signed{arg.sign()} {}
 
 Variable::Variable(const Variable& var) : 
-    circuit{var.getCircuit()}, bits{make_vector([&var](std::size_t i) {
-                return var.bits[i];
-    }, var.size())}, is_signed{var.sign()} {}
+    circuit{var.getCircuit()}, bits{var.bits}, is_signed{var.sign()} {}
+
+Variable::Variable(Variable&& var) :
+    circuit{std::move(var.getCircuit())}, bits{std::move(var.bits)}, is_signed{var.sign()} {}
 
 Variable& Variable::operator=(const Variable& other) {
     if (other.getTypeInfo() == getTypeInfo()) {
         bits = other.bits;
+    }
+    else {
+        bits = std::move(other.cast(getTypeInfo()).bits);
+    }
+    return *this;
+}
+
+Variable& Variable::operator=(Variable&& other) {
+    if (other.getTypeInfo() == getTypeInfo()) {
+        bits = std::move(other.bits);
     }
     else {
         bits = std::move(other.cast(getTypeInfo()).bits);

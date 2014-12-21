@@ -269,15 +269,15 @@ void parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
     auto return_type = decl->getReturnType();
     assert(return_type->isIntegerType());
     auto scope = Scope{c, TypeInfo{return_type->isSignedIntegerType(), (int)con->getTypeInfo(return_type).second}};
-    auto args = std::vector<Argument>{};
+    auto args = std::vector<std::pair<std::string, Argument>>{};
     //add all arguments
     for (auto param : decl->parameters()) {
         auto qualtype = param->getTypeSourceInfo()->getType();
         if (qualtype->isIntegerType()) {
             int size = con->getTypeInfo(qualtype).second;
             bool sign = qualtype->isSignedIntegerType();
-            args.push_back(c.addArgument(TypeInfo{sign, size}));
-            scope.declare(param->getNameAsString(), args.back().asValue());
+            args.emplace_back(param->getNameAsString(), c.addArgument(TypeInfo{sign, size}));
+            scope.declare(args.back().first, args.back().second.asValue());
         }
         else {
             assert(false);
@@ -285,6 +285,17 @@ void parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
     }
     //parse
     parseStmt(decl->getBody(), con, scope);
+    std::cout << "Done parsing\n";
+    auto p = c.generateCNF(scope.return_value() == 0x1337);
+    auto soln = p.solve();
+    if (soln) {
+        for (auto& arg : args) {
+            std::cout << arg.first << ' ' << arg.second.solution(soln) << '\n';
+        }
+    }
+    else {
+        std::cout << "UNSAT\n";
+    }
 }
 
 static llvm::cl::OptionCategory toolCategory("my-tool options");
