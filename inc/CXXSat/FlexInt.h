@@ -141,6 +141,7 @@ private:
     }
 public:
     static FlexInt fromString(const std::string&, TypeInfo = TypeInfo{true, int_size});
+    FlexInt() : FlexInt{0, TypeInfo{true, int_size}} {}
     FlexInt(const FlexInt&) = default;
     template <class Int>
     FlexInt(const Int& i) : FlexInt(i, TypeInfo::create<Int>()) {}
@@ -290,6 +291,12 @@ public:
         return *this;
     }
 };
+
+template<>
+inline size_t numbits<FlexInt>(FlexInt i) {
+    return i.getTypeInfo().size();
+}
+
 
 
 #endif

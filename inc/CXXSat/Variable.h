@@ -120,7 +120,9 @@ public:
     Variable(Variable&&);
     explicit Variable(const Circuit::Value& v) : circuit{v.getCircuit()}, bits{v}, is_signed{false} {}
     template <class Int>
-    Variable(Int, const std::weak_ptr<Circuit::impl>&, TypeInfo = TypeInfo::create<Int>());
+    Variable(Int i, const std::weak_ptr<Circuit::impl>& c) : Variable(i, c, TypeInfo::create<Int>(i)) {}
+    template <class Int>
+    Variable(Int, const std::weak_ptr<Circuit::impl>&, TypeInfo);
     //provide factory method to allow explicitly passing template param.
     template <class Int>
     static Variable create(Int i, const std::weak_ptr<Circuit::impl>& c) {

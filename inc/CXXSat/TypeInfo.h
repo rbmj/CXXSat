@@ -21,8 +21,8 @@ public:
         return TypeInfo{0};
     }
     template <class Int>
-    static TypeInfo create() {
-        return TypeInfo{std::is_signed<Int>::value, sizeof(Int)*8};
+    static TypeInfo create(Int i = Int{}) {
+        return TypeInfo{std::is_signed<Int>::value, (int)::numbits(i)};
     }
     bool isBit() const {
         return info == 0;
