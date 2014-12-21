@@ -296,21 +296,24 @@ parseFunc_res parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
     return {std::move(c), std::move(scope), std::move(args), ti};
 }
 
-void satisfyFunc(clang::FunctionDecl* decl, clang::ASTContext* con, const std::string& retval_s) {
+void satisfyFunc(clang::FunctionDecl* decl, clang::ASTContext* con, const std::string& retval_s, bool dump) {
     auto res = parseFunc(decl, con);
     auto retval_int = FlexInt::fromString(retval_s, res.return_type);
     auto retval = VarRef{res.scope, retval_int};
-    std::cout << "Done parsing\n";
-    std::cout << "Solving for value " << retval_int << '\n';
     auto p = res.circuit.generateCNF(res.scope.return_value() == retval);
-    auto soln = p.solve();
-    if (soln) {
-        for (auto& arg : res.args) {
-            std::cout << arg.first << ' ' << arg.second.solution(soln) << '\n';
-        }
+    if (dump) {
+        p.printDIMACS(std::cout);
     }
     else {
-        std::cout << "UNSAT\n";
+        auto soln = p.solve();
+        if (soln) {
+            for (auto& arg : res.args) {
+                std::cout << arg.first << ' ' << arg.second.solution(soln) << '\n';
+            }
+        }
+        else {
+            std::cout << "UNSAT\n";
+        }
     }
 }
 
@@ -319,12 +322,12 @@ int main(int argc, const char **argv) {
     llvm::cl::extrahelp helpmsg(clang::tooling::CommonOptionsParser::HelpMessage);
     llvm::cl::opt<std::string> funcname("function", llvm::cl::Required, llvm::cl::desc("function to satisfy"), llvm::cl::cat(cxxsat));
     llvm::cl::opt<std::string> value("value", llvm::cl::Required, llvm::cl::desc("desired return value of function"), llvm::cl::cat(cxxsat));
-
+    llvm::cl::opt<bool> dump("dump", llvm::cl::desc("Dump DIMACS output to stdout instead of solving"), llvm::cl::cat(cxxsat));
     clang::tooling::CommonOptionsParser opts(argc, argv, cxxsat);
     auto& compile = opts.getCompilations();
     clang::tooling::ClangTool tool(compile, opts.getSourcePathList());
-    FindFunctionFactory factory(funcname.c_str(), [&value](clang::FunctionDecl* d, clang::ASTContext* con) {
-            satisfyFunc(d, con, value); });
+    FindFunctionFactory factory(funcname.c_str(), [&value, &dump](clang::FunctionDecl* d, clang::ASTContext* con) {
+            satisfyFunc(d, con, value, dump); });
     int result = tool.run(&factory);
     return 0;
 }

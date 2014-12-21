@@ -1,21 +1,33 @@
 #include <CXXSat/FlexInt.h>
 
 #include <sstream>
+#include <ctype.h>
+#include <stdexcept>
 
 FlexInt FlexInt::fromString(const std::string& s, TypeInfo info) {
     std::istringstream str{s};
+    bool iszero = false;
     if (str.peek() == '0') {
         str.get();
-        if (str.peek() == 'x') {
+        auto nextc = str.peek();
+        if (nextc == 'x') {
             str.get();
             str >> std::hex;
         }
-        else {
+        else if (isdigit(nextc)) {
             str >> std::oct;
+        }
+        else if (nextc == std::istringstream::traits_type::eof()) {
+            iszero = true;
         }
     }
     FlexInt x{0, info};
-    x.do_t([&str](auto& i) { str >> i; });
+    if (!iszero) {
+        x.do_t([&str](auto& i) { str >> i; });
+    }
+    if (str.fail() || !str.eof()) {
+        throw std::invalid_argument("Cannot parse string " + s + " into type " + info.toString());
+    }
     return x;
 }
 

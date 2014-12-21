@@ -3,6 +3,7 @@
 
 #include <type_traits>
 #include <ostream>
+#include <string>
 
 template <class T>
 size_t numbits(T) {
@@ -39,6 +40,7 @@ public:
     bool operator!=(const TypeInfo& other) const {
         return info != other.info;
     }
+    std::string toString() const;
 };
 
 template<>
