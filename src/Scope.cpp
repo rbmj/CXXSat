@@ -3,7 +3,7 @@
 #include <utility>
 #include <assert.h>
 
-Scope::Scope(Circuit& c, TypeInfo info) : parent(nullptr), cond(), circuit(c) {
+Scope::Scope(Circuit& c, TypeInfo info) : parent(nullptr), cond(), circuit(c.getPimpl()) {
     declare("_RETURN", info, 0);
 }
 

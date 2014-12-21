@@ -2,9 +2,15 @@
 #include <CXXSat/Gates.h>
 #include <CXXSat/Variable.h>
 #include <CXXSat/Argument.h>
+#include <CXXSat/Sat.h>
 
 #include "CircuitImpl.h"
 
+Problem Circuit::Gate::CNF() {
+    Problem ret;
+    emplaceCNF(ret);
+    return ret;
+}
 Argument Circuit::addArgument(TypeInfo info) {
     return Argument(pimpl_get_self(), info);
 }
@@ -40,6 +46,10 @@ void Circuit::impl::number() {
 
 Variable Circuit::getLiteralBit(bool b) const {
     return Variable(b ? getLiteralTrue() : getLiteralFalse());
+}
+
+Variable Circuit::getLiteralBit(const std::weak_ptr<Circuit::impl>& c, bool b) {
+    return Variable(b ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c));
 }
 
 Problem Circuit::generateCNF() const {

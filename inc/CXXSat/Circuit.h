@@ -14,7 +14,6 @@
 #include <assert.h>
 
 #include <CXXSat/Range.h>
-#include <CXXSat/Sat.h>
 #include <CXXSat/TypeInfo.h>
 
 //From an efficiency standpoint, I'm not completely satisfied with
@@ -24,9 +23,7 @@
 
 class Argument;
 class Variable;
-
-template <bool, unsigned>
-class IntVar;
+class Problem;
 
 class Circuit {
 public:
@@ -49,6 +46,9 @@ private:
     const std::weak_ptr<impl>& pimpl_get_self() const;
 public:
     Circuit();
+    Circuit(const Circuit&) = delete;
+    Circuit(Circuit&& c) = default;
+    const std::weak_ptr<impl>& getPimpl() const { return pimpl_get_self(); }
     Argument addArgument(TypeInfo info);
     template <class Int>
     Argument addArgument();
@@ -58,8 +58,11 @@ public:
     Value getLiteralTrue() const;
     Value getLiteralFalse() const;
     Variable getLiteralBit(bool) const;
+    static Variable getLiteralBit(const std::weak_ptr<Circuit::impl>&, bool);
     template <class Int>
     Variable getLiteral(Int i) const;
+    template <class Int>
+    static Variable getLiteral(const std::weak_ptr<Circuit::impl>&, Int);
     Problem generateCNF() const;
     Problem generateCNF(const Variable&) const;
 };
@@ -287,11 +290,7 @@ class Circuit::Gate : public Circuit::Node {
     friend class GateBase;
 public:
     virtual void emplaceCNF(Problem& p) = 0;
-    virtual Problem CNF() {
-        Problem ret;
-        emplaceCNF(ret);
-        return ret;
-    }
+    virtual Problem CNF();
     std::shared_ptr<Wire> getWire() {
         if (auto wire = out_wire.lock()) {
             return wire;

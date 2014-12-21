@@ -4,6 +4,7 @@
 #include <ostream>
 #include <type_traits>
 #include <algorithm>
+#include <string>
 #include <stdint.h>
 #include <assert.h>
 
@@ -139,6 +140,7 @@ private:
         return op(new_a, new_b);
     }
 public:
+    static FlexInt fromString(const std::string&, TypeInfo = TypeInfo{true, int_size});
     FlexInt(const FlexInt&) = default;
     template <class Int>
     FlexInt(const Int& i) : FlexInt(i, TypeInfo::create<Int>()) {}

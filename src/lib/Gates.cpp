@@ -1,4 +1,5 @@
 #include <CXXSat/Gates.h>
+#include <CXXSat/Sat.h>
 
 // From http://en.wikipedia.org/wiki/Tseitin_transformation
 

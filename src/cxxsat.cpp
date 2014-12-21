@@ -264,11 +264,19 @@ VarRef parseDeclRef(clang::DeclRefExpr* expr, clang::ASTContext*, Scope& scope) 
     return scope[expr->getNameInfo().getAsString()];
 }
 
-void parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
+struct parseFunc_res {
+    Circuit circuit;
+    Scope scope;
+    std::vector<std::pair<std::string, Argument>> args;
+    TypeInfo return_type;
+};
+
+parseFunc_res parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
     auto c = Circuit{};
     auto return_type = decl->getReturnType();
     assert(return_type->isIntegerType());
-    auto scope = Scope{c, TypeInfo{return_type->isSignedIntegerType(), (int)con->getTypeInfo(return_type).second}};
+    auto ti = TypeInfo{return_type->isSignedIntegerType(), (int)con->getTypeInfo(return_type).second};
+    auto scope = Scope{c, ti};
     auto args = std::vector<std::pair<std::string, Argument>>{};
     //add all arguments
     for (auto param : decl->parameters()) {
@@ -285,11 +293,19 @@ void parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
     }
     //parse
     parseStmt(decl->getBody(), con, scope);
+    return {std::move(c), std::move(scope), std::move(args), ti};
+}
+
+void satisfyFunc(clang::FunctionDecl* decl, clang::ASTContext* con, const std::string& retval_s) {
+    auto res = parseFunc(decl, con);
+    auto retval_int = FlexInt::fromString(retval_s, res.return_type);
+    auto retval = VarRef{res.scope, retval_int};
     std::cout << "Done parsing\n";
-    auto p = c.generateCNF(scope.return_value() == 0x1337);
+    std::cout << "Solving for value " << retval_int << '\n';
+    auto p = res.circuit.generateCNF(res.scope.return_value() == retval);
     auto soln = p.solve();
     if (soln) {
-        for (auto& arg : args) {
+        for (auto& arg : res.args) {
             std::cout << arg.first << ' ' << arg.second.solution(soln) << '\n';
         }
     }
@@ -298,18 +314,17 @@ void parseFunc(clang::FunctionDecl* decl, clang::ASTContext* con) {
     }
 }
 
-static llvm::cl::OptionCategory toolCategory("my-tool options");
-
 int main(int argc, const char **argv) {
-    if (argc > 1) {
-        clang::tooling::CommonOptionsParser opts(--argc, argv + 1, toolCategory);
-        auto& compile = opts.getCompilations();
-        clang::tooling::ClangTool tool(compile, opts.getSourcePathList());
-        FindFunctionFactory factory(argv[1], &parseFunc);
-        int result = tool.run(&factory);
-    }
-    else {
-        std::cerr << "USAGE: " << argv[0] << " IDENTIFIER [OPTIONS] -- [CLANG OPTIONS]\n";
-    }
+    llvm::cl::OptionCategory cxxsat("cxxsat options");
+    llvm::cl::extrahelp helpmsg(clang::tooling::CommonOptionsParser::HelpMessage);
+    llvm::cl::opt<std::string> funcname("function", llvm::cl::Required, llvm::cl::desc("function to satisfy"), llvm::cl::cat(cxxsat));
+    llvm::cl::opt<std::string> value("value", llvm::cl::Required, llvm::cl::desc("desired return value of function"), llvm::cl::cat(cxxsat));
+
+    clang::tooling::CommonOptionsParser opts(argc, argv, cxxsat);
+    auto& compile = opts.getCompilations();
+    clang::tooling::ClangTool tool(compile, opts.getSourcePathList());
+    FindFunctionFactory factory(funcname.c_str(), [&value](clang::FunctionDecl* d, clang::ASTContext* con) {
+            satisfyFunc(d, con, value); });
+    int result = tool.run(&factory);
     return 0;
 }

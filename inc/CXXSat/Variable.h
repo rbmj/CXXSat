@@ -514,4 +514,9 @@ Variable Circuit::getLiteral(Int i) const {
     return Variable(i, pimpl_get_self());
 }
 
+template <class Int>
+Variable Circuit::getLiteral(const std::weak_ptr<Circuit::impl>& c, Int i) {
+    return Variable(i, c);
+}
+
 #endif

@@ -1,5 +1,14 @@
 #include <CXXSat/FlexInt.h>
 
+#include <sstream>
+
+FlexInt FlexInt::fromString(const std::string& s, TypeInfo info) {
+    std::istringstream str{s};
+    FlexInt x{0, info};
+    x.do_t([&str](auto& i) { str >> i; });
+    return x;
+}
+
 //clang needs to expand a lot of templates that end up not getting used, so we'll ignore the
 //spurrious warnings.  There's an assert in do_binop that will catch us if there's an error.
 

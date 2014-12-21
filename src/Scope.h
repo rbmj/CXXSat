@@ -15,7 +15,8 @@
 class Scope {
 public:
     Scope(Circuit&, TypeInfo info);
-    Scope(Scope&);
+    //not a copy constructor, a child constructor!
+    explicit Scope(Scope&);
     Scope(Scope&, const Variable&);
     Scope(Scope&&) = default;
     ~Scope();
@@ -23,7 +24,7 @@ public:
     Variable* lookup(const std::string&);
     template <class Int>
     Variable getLiteral(Int i) {
-        return circuit.getLiteral(i);
+        return Circuit::getLiteral(circuit, i);
     }
     template <class T>
     VarRef declare(const std::string&);
@@ -37,7 +38,7 @@ public:
 private:
     Scope* parent;
     std::unique_ptr<Variable> cond;
-    Circuit& circuit;
+    std::weak_ptr<Circuit::impl> circuit;
     std::unordered_map<std::string, Variable> variables;
     std::unordered_map<std::string, Variable> parent_vars;
 };
@@ -45,7 +46,7 @@ private:
 template <class T>
 VarRef Scope::declare(const std::string& s, T val) {
     auto res = variables.insert(std::make_pair(
-            s, circuit.getLiteral(val)));
+            s, Circuit::getLiteral(circuit, val)));
     assert(res.second);
     return VarRef{*this, res.first->second};
 }
