@@ -4,6 +4,11 @@
 #include <type_traits>
 #include <ostream>
 
+template <class T>
+size_t numbits(T) {
+    return sizeof(T)*8;
+}
+
 class TypeInfo {
 private:
     int info;
@@ -35,6 +40,11 @@ public:
         return info != other.info;
     }
 };
+
+template<>
+inline size_t numbits<TypeInfo>(TypeInfo t) {
+    return t.size();
+}
 
 std::ostream& operator<<(std::ostream&, const TypeInfo&);
 

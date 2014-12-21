@@ -78,7 +78,17 @@ public:
         }
         return *this;
     }
-
+    TypeInfo getTypeInfo() const {
+        if (type == INTEGER) {
+            return storage.integer.getTypeInfo();
+        }
+        else if (type == RVALUE) {
+            return storage.rvalue->getTypeInfo();
+        }
+        else {
+            return storage.lvalue->getTypeInfo();
+        }
+    }
     VarRef(VarRef&& other) : scope{other.scope}, type{other.type} {
         if (type == RVALUE) {
             new (&storage.rvalue) std::unique_ptr<Variable>(std::move(other.storage.rvalue));

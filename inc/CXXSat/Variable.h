@@ -276,20 +276,11 @@ public:
         --(*this);
         return x;
     }
-    Variable& operator&=(const Variable& v) {
-        return *this = *this & v;
+    Variable operator<<(unsigned i) const {
+        return Shl(*this, i);
     }
-    Variable& operator|=(const Variable& v) {
-        return *this = *this | v;
-    }
-    Variable& operator^=(const Variable& v) {
-        return *this = *this ^ v;
-    }
-    Variable& operator+=(const Variable& v) {
-        return *this = *this + v;
-    }
-    Variable& operator-=(const Variable& v) {
-        return *this = *this - v;
+    Variable operator>>(unsigned i) const {
+        return Shr(*this, i);
     }
     Variable& operator<<=(const Variable& v) {
         return *this = *this << v;
@@ -297,32 +288,49 @@ public:
     Variable& operator<<=(unsigned i) {
         return *this = *this << i;
     }
-    Variable operator<<(unsigned i) const {
-        return Shl(*this, i);
-    }
     Variable& operator>>=(const Variable& v) {
         return *this = *this >> v;
     }
     Variable& operator>>=(unsigned i) {
         return *this = *this >> i;
     }
-    Variable operator>>(unsigned i) const {
-        return Shr(*this, i);
+    template <class T>
+    Variable& operator&=(const T& v) {
+        return *this = *this & v;
     }
-    Variable& operator*=(const Variable& v) {
+    template <class T>
+    Variable& operator|=(const T& v) {
+        return *this = *this | v;
+    }
+    template <class T>
+    Variable& operator^=(const T& v) {
+        return *this = *this ^ v;
+    }
+    template <class T>
+    Variable& operator+=(const T& v) {
+        return *this = *this + v;
+    }
+    template <class T>
+    Variable& operator-=(const T& v) {
+        return *this = *this - v;
+    }
+    template <class T>
+    Variable& operator*=(const T& v) {
         return *this = *this * v;
     }
-    Variable& operator/=(const Variable& v) {
+    template <class T>
+    Variable& operator/=(const T& v) {
         return *this = *this / v;
     }
-    Variable& operator%=(const Variable& v) {
+    template <class T>
+    Variable& operator%=(const T& v) {
         return *this = *this % v;
     }
     Variable isZero() const {
         if (isBit()) {
             return Variable(::Not(bits[0]));
         }
-        return Variable(::MultiOr(bits));
+        return Variable(::Not(::MultiOr(bits)));
     }
     Variable asBit() const {
         if (isBit()) {
@@ -357,7 +365,7 @@ template <class Int>
 Variable::Variable(Int t, const std::weak_ptr<Circuit::impl>& c, TypeInfo info) : 
     Variable{c, info}
 {
-    auto numbits = sizeof(t)*8;
+    auto numbits = ::numbits(t);
     if (size() < numbits) {
         for (unsigned i = 0; i < size(); ++i) {
             bits[i] = ((t >> i) & 1) ? Circuit::getLiteralTrue(c) : Circuit::getLiteralFalse(c);
@@ -439,14 +447,14 @@ void Variable::variadic_transform(const std::vector<Variable>& vec, Op op) {
 /* Not worth the trouble...
 template <class Int>
 Variable Variable::Equal(const Variable& a, Int b) {
-    if (sizeof(b)*8 > a.size()) {
+    if (::numbits(b) > a.size()) {
         auto shiftout = b >> a.size();
         if (shiftout != 0 || shiftout != (Int)-1) {
             //we're too big - no way we can be equal
             return Variable(Circuit::getLiteralFalse(a.getCircuit()));
         }
     }
-    auto numbits = std::min(a.size(), 8*sizeof(b));
+    auto numbits = std::min(a.size(), ::numbits(b));
     auto bits = std::vector<Circuit::Value>{a.size()};
     unsigned i;
     for (i = 0; i < numbits; ++i) {

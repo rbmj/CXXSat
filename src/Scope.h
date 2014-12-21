@@ -26,6 +26,9 @@ public:
     Variable getLiteral(Int i) {
         return Circuit::getLiteral(circuit, i);
     }
+    Variable getLiteral(FlexInt i) {
+        return Variable::getLiteral(i, circuit);
+    }
     template <class T>
     VarRef declare(const std::string&);
     template <class T>
