@@ -123,12 +123,17 @@ public:
     virtual int ID() const = 0;
     void connect(const Node* n) {
         //EVIL!
-        to.push_back(const_cast<Node*>(n));
+        auto x = to.emplace(const_cast<Node*>(n), 1);
+        if (!x.second) {
+            ++(x.first->second);
+        }
     }
     void disconnect(const Node* n) {
-        auto it = std::find(to.begin(), to.end(), n);
+        auto it = to.find(const_cast<Node*>(n));
         assert(it != to.end());
-        to.erase(it);
+        if (--(it->second) == 0) {
+            to.erase(it);
+        }
     }
     const std::weak_ptr<Circuit::impl>& getCircuit() {
         return c;
@@ -138,7 +143,7 @@ public:
     }
 protected:
     std::shared_ptr<Node> from;
-    std::vector<Node*> to;
+    std::unordered_map<Node*, unsigned> to;
     std::weak_ptr<Circuit::impl> c;
     virtual bool setID(int) = 0;
 };
