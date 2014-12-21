@@ -4,6 +4,16 @@
 
 FlexInt FlexInt::fromString(const std::string& s, TypeInfo info) {
     std::istringstream str{s};
+    if (str.peek() == '0') {
+        str.get();
+        if (str.peek() == 'x') {
+            str.get();
+            str >> std::hex;
+        }
+        else {
+            str >> std::oct;
+        }
+    }
     FlexInt x{0, info};
     x.do_t([&str](auto& i) { str >> i; });
     return x;
