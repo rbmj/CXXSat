@@ -144,7 +144,14 @@ public:
     }
 protected:
     std::shared_ptr<Node> from;
+#ifdef USE_UNORDERED
+    //tests suggest that this is slower than std::map<>, but
+    //not by a significant amount - so some applications might
+    //benefit using unordered vice ordered maps.
+    std::unordered_map<Node*, unsigned> to;
+#else
     std::map<Node*, unsigned> to;
+#endif
     std::weak_ptr<Circuit::impl> c;
     virtual bool setID(int) = 0;
 };
