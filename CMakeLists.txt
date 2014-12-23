@@ -19,17 +19,21 @@ add_executable(plugin
     src/Scope.cpp
     src/VarRef.cpp
 )
+
 set_target_properties(plugin PROPERTIES OUTPUT_NAME cxxsat)
 
 add_executable(FlexIntTest tests/FlexIntTest.cpp)
 add_executable(CircuitTest tests/CircuitTest.cpp)
 add_executable(IntegerTest tests/IntegerTest.cpp)
+add_executable(FactorTest tests/FactorTest.cpp)
 
 set(CMAKE_CXX_FLAGS "-O2 -g -std=c++14 -Wall")
 
 target_link_libraries(FlexIntTest cxxsat minisat)
 target_link_libraries(CircuitTest cxxsat minisat)
 target_link_libraries(IntegerTest cxxsat minisat)
+target_link_libraries(FactorTest cxxsat minisat)
+
 target_link_libraries(plugin clangFrontend clangSerialization clangDriver clangTooling clangParse clangSema clangStaticAnalyzerFrontend clangStaticAnalyzerCheckers clangStaticAnalyzerCore clangAnalysis clangRewriteFrontend clangRewrite clangEdit clangAST clangLex clangBasic llvm LLVM-3.5 cxxsat minisat)
 
 add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS)

@@ -10,6 +10,7 @@
 
 #include <CXXSat/TypeInfo.h>
 #include <CXXSat/IntegerTypes.h>
+#include <CXXSat/CastMode.h>
 
 class Variable;
 
@@ -27,6 +28,8 @@ private:
         int64_t int64;
         
         //rely on polymorphic lambdas for all the hard stuff...
+        //FIXME: This doesn't handle modular arith correctly for
+        //integers of non-standard sizes
         template <class Op>
         auto do_t(TypeInfo type, Op op) {
             int size = type.size();
@@ -34,6 +37,13 @@ private:
             //that we run across
             if (size % 8) {
                 size += 8 - (size % 8);
+            }
+            //TODO: Remove ugly hack
+            if (size > 16 && size < 32) {
+                size = 32;
+            }
+            if (size > 32 && size < 64) {
+                size = 64;
             }
             size = type.sign() ? -size : size;
             switch (size) {
@@ -64,6 +74,13 @@ private:
             //that we run across
             if (size % 8) {
                 size += 8 - (size % 8);
+            }
+            //TODO: Remove ugly hack
+            if (size > 16 && size < 32) {
+                size = 32;
+            }
+            if (size > 32 && size < 64) {
+                size = 64;
             }
             size = type.sign() ? -size : size;
             switch (size) {
@@ -129,7 +146,7 @@ private:
             }
         }
         //however, all of that said:
-        if (op_size < int_size) {
+        if (CastMode::get() == CastMode::C_STYLE && op_size < int_size) {
             //all values are converted to int
             op_size = int_size;
             op_sign = true;
@@ -160,24 +177,31 @@ public:
         if (size % 8) {
             size += 8 - (size % 8);
         }
+        //TODO: Remove ugly hack
+        if (size > 16 && size < 32) {
+            size = 32;
+        }
+        if (size > 32 && size < 64) {
+            size = 64;
+        }
         size = info.sign() ? -size : size;
         switch (size) {
         case 8:
-            return do_t([](const auto& i) { return FlexInt{(uint8_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(uint8_t)i, info}; });
         case 16:
-            return do_t([](const auto& i) { return FlexInt{(uint16_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(uint16_t)i, info}; });
         case 32:
-            return do_t([](const auto& i) { return FlexInt{(uint32_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(uint32_t)i, info}; });
         case 64:
-            return do_t([](const auto& i) { return FlexInt{(uint64_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(uint64_t)i, info}; });
         case -8:
-            return do_t([](const auto& i) { return FlexInt{(int8_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(int8_t)i, info}; });
         case -16:
-            return do_t([](const auto& i) { return FlexInt{(int16_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(int16_t)i, info}; });
         case -32:
-            return do_t([](const auto& i) { return FlexInt{(int32_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(int32_t)i, info}; });
         case -64:
-            return do_t([](const auto& i) { return FlexInt{(int64_t)i}; });
+            return do_t([info](const auto& i) { return FlexInt{(int64_t)i, info}; });
         default:
             throw 0; //FIXME
         }

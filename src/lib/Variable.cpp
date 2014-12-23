@@ -2,6 +2,8 @@
 #include <CXXSat/Circuit.h>
 #include <CXXSat/Argument.h>
 
+CastMode::mode_t CastMode::mode = CastMode::C_STYLE;
+
 Variable::Variable(const Argument& arg) : 
     circuit{arg.getCircuit()}, bits{make_vector([&arg](std::size_t i) {
                 return Circuit::Value(*(arg.getInputs().at(i)));

@@ -1,6 +1,7 @@
 #ifndef VARIABLE_H_INC
 #define VARIABLE_H_INC
 
+#include <CXXSat/CastMode.h>
 #include <CXXSat/Circuit.h>
 #include <CXXSat/Range.h>
 #include <CXXSat/IntegerTypes.h>
@@ -418,7 +419,7 @@ operator()(const Variable& a, const Variable& b, ExtraArgs... args) const {
         }
     }
     //however, all of that said:
-    if (op_size < int_size) {
+    if (CastMode::get() == CastMode::C_STYLE && op_size < int_size) {
         //all values are converted to int
         op_size = int_size;
         op_sign = true;

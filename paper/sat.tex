@@ -1,0 +1,390 @@
+\documentclass{sig-alternate}
+\usepackage{listings}
+\usepackage{amsfonts}
+\begin{document}
+\conferenceinfo{USNA}{Annapolis, MD, USA}
+
+\title{Examination of SMT to SAT Reduction}
+
+\numberofauthors{1}
+\author{
+\alignauthor
+MIDN R Blair Mason, USN\\
+   \affaddr{1 Wilson Rd. \#13623}\\
+   \affaddr{Annapolis, MD 21412}\\
+   \email{m164122@usna.edu}
+}
+\date{12 December 2014}
+
+\maketitle
+
+\begin{abstract}
+This paper is an overview of current techniques for reduction of
+SMT problems over the \texttt{QF\_BV} theory to boolean SAT instances.
+It compares the performance of a basic eager implementation, which
+takes input in C via a clang plugin, to the Z3 SMT solver.  It then
+compares the performance of these to two different SAT backends,
+minisat and cryptominisat.
+
+This experiment found that the Z3 had a significant performance
+improvement (~5.5x) over the basic eager implementation in factoring
+40-bit semiprimes, but this improvement was mitigated somewhat (down
+to 1.12x) with the use of an optimized SAT backend.
+\end{abstract}
+
+\section{Introduction}
+Satisfiability modulo theories (SMT) solvers are commonly used in many
+domains for correctness verification.  However, they are broadly useful
+as the NP-completeness of the satisfiability problem implies that any
+problem in NP can be transformed into an equivalent satisfiability
+problem.
+
+One of the most useful theories in SMT for reverse engineering purposes
+is the theory of quantifier free fixed-length bitvectors, 
+\texttt{QF\_BV}.  Many programs written in low level languages are in
+essence descriptions of mathematical transformations over finite length
+bit vectors, so these programs are easily transformed into an appropriate
+representation in \texttt{QF\_BV}.  Computations performed by these
+programs can have important security or correctness implications, and
+SMT solvers can perform a range of functions from proving the safety of
+memory accesses to computing function preimages.
+
+\subsection{Transformation into SMT}
+
+Simple functions in C are very easy to transform into an equivalent
+problem in \texttt{QF\_BV}.  For example, the following C function
+takes two 32-bit bitvectors (assuming a platform with 32-bit int) and
+returns the bitwise exclusive or of the two bitvectors and a constant
+(0xdeadbeef):
+
+\begin{lstlisting}[language=C]
+unsigned foo(unsigned bar, unsigned baz) {
+    bar ^= 0xdeadbeef;
+    bar |= baz;
+    return bar;
+}
+\end{lstlisting}
+
+This can be encoded in the SMT-Lib 2.0 format as:
+
+\begin{lstlisting}
+(define-fun foo
+    ((bar (_ BitVec 32)) (baz (_ BitVec 32)))
+    (_ BitVec 32)
+    (bvxor (bvxor bar #xdeadbeef) baz))
+\end{lstlisting}
+
+\subsection{Challenges in applying SMT to C}
+Arrays, structures, and unions can all be similarly handled in the
+\texttt{QF\_BV} theory.  The difficulty lies in handling pointers,
+input, and loops.  SMT solvers can, in some cases, be used to prove
+the validity of arbitrary assertions, including the validity of
+memory accesses, such as in \cite{Gries07}.  However, pointer
+arithmetic and looping make this task significantly more difficult.
+Determining satisfiability of a program that contains a loop is
+reducible to the halting problem in the general case.  Only loops
+that can be statically unwound can be transformed into an
+equivalent SMT representation.
+
+One approach to solving this problem is to guess an upper bound for
+the number of times a loop may execute and add logic that will poison
+the output if the loop executes additional times.  This can be done
+in an iterative fashion, increasing the upper bound with each run,
+until the solver is able to either determine the actual upper bound
+on the loop's execution or find a model that satisfies the constraints
+given to the solver.  Since this upper bound can be arbitrarily large,
+the solver cannot prove the satisfiability of the given model in the
+general case.
+
+Input can be handled as simply unknown bitvectors.  Interactive or
+hardware input that comes in as part of an unbounded loop is difficult
+or impossible to analyze, but if the amount of input to the program
+is finite it can be modeled as unknown bits in the \texttt{QF\_BV}
+representation.
+
+\subsection{Transformation to SAT}
+
+SMT Solvers, given a problem in \texttt{QF\_BV}, must then perform
+further processing on the problem in order to solve it.  Modern SMT
+solvers perform various operations on the SMT problem, such as
+propagating constants and simplifying operations at the bitvector
+level.  Early SAT solvers, however, would immediately transform the
+problem into a \textsc{Circuit-SAT} instance.  This is referred to
+as the \textit{eager} approach.  The transformation from an SMT
+representation to a SAT representation loses information about the
+semantic relationships between data, so "obvious" facts in SMT
+(e.g. $a + b = b + a$) are much more difficult for the SAT solver
+to learn.  In practice, modern SMT solvers communicate with the
+underlying SAT solver to eliminate duplicate search paths.
+
+After any transformations at the SMT level are applied, most SMT
+solvers convert the \texttt{QF\_BV} problem representation into a
+\textsc{Circuit-SAT} instance through a process called
+\textit{bit-blasting}.  This process is essentially the same as
+recreating the circuitry that a processor would use to perform
+the computation using abstract logic gates.
+
+Addition and subtraction of bitvectors can be implemented with a
+series of one bit full adder circuits.  Shifting by a constant
+amount is trivial to implement.  Shifting by variable amounts can
+be implemented with barrel shifters.
+
+A conditional statement \verb|b ? t : f| for the bit b and bitvectors
+t and f can be emulated by the computation 
+$((b \wedge t_i) \vee (\neg b \wedge f_i) \forall t_i \in t, f_i \in f)$.
+With conditional expressions, one can implement multiplication as a
+series of shifts and conditional adds.  However, this is the binary
+equivalent of standard $O(n^2)$ multiplication.  A full adder uses five
+gates to perform the addition and carry computation.  The shifts can be
+done without adding any gates, but the logic to make the add conditional
+requires an additional three gates per bit, for a total of eight gates
+per bit per add.  So, performing a multiplication of two 64-bit integers
+and preserving the entire 128-bit result requires 131,072 gates using
+the naive algorithm.
+
+Because multiplication and division are nonlinear operations on bitvectors,
+these operations are significantly more challenging for SMT solvers to
+solve.
+
+\subsection{Transformation to CNF}
+
+The \textsc{Circuit-SAT} problem that encodes the \texttt{QF\_BV}
+problem is then transformed once again into a CNF-SAT problem.  This
+process is a simple application of the Tseitin transformation from
+\cite{tseitin}.  In this process, the solver creates a list of clauses
+and visits each gate in the circuit, appending clauses to the list
+as it goes.  Each gate adds three clauses to the output CNF
+representation.  Though this is usually very far from the minimal CNF
+representation of the circuit, obtaining such a minimal CNF using
+known algorithms requires exponential time.  The resultant CNF
+description is logically equivalent to the original circuit, and any
+model that satisfies the CNF also satisfies the original circuit
+after discarding intermediate variables.
+
+\subsection{Solving a CNF-SAT problem}
+
+CNF-SAT problems are usually solved using the DPLL algorithm described
+in \cite{dpll}.  This algorithm is a simple backtracking depth first
+search with two added steps at each state:
+
+\begin{enumerate}
+    \item For all clauses containing only one variable $V$, remove
+        all instances of $\neg V$ and remove all clauses containing
+        $V$ (and analogously for clauses containing only $\neg V$).
+    \item If any variable $V$ occurs either always as $V$ or always
+        as $\neg V$, set it to true or false, respectively, and
+        remove all clauses with this variable.
+\end{enumerate}
+
+At any point, the current state is unsatisfiable if the CNF contains
+empty clauses, and the current state is a model that satisfies the
+problem if the current state is empty.
+
+For performance, the critical step in the algorithm is deciding which
+variable to assign next.  This is where a modern SMT solvers use their
+additional information to remove large amounts of the search space and
+prioritize important variables.
+
+\section{Performance Comparisons}
+
+For this paper, a clang plugin was developed that, given a function in
+a subset of C and a desired return value, created an equivalent SAT
+problem instance.  It could then either dump the instance to a DIMACS
+file or solve it using the default \texttt{solve()} function in
+\texttt{libminisat.so}.  This plugin was then compared with Z3, a
+highly optimized SMT solver from Microsoft Research (\cite{demoura}),
+and the minisat and cryptominisat demo solvers, both of which are
+optimized over the default solvers in the library.
+
+\subsection{Problem Description}
+
+The problem used in this experiment was a simple factoring problem.
+The problem description was:
+
+\medskip
+
+\noindent \hangindent=0.7cm \textbf{Given:} $n \in \{ 0, 1 \}^k$
+for some $k \in \mathbb{Z}$
+
+\noindent \hangindent=0.7cm \textbf{Find:} $p, q \in \{ 0, 1 \}
+^{\frac k 2} \ni 0^{\frac k 2}p \times 0^{\frac k 2}q = n$
+
+\medskip
+
+This problem was chosen as the nonlinear nature of multiplication
+makes it easy to generate SMT problems with significant runtimes.
+For many simple linear problems, parsing the problem description
+comprises a non-trivial portion of the total runtime.  However,
+this approach may be unfair to the Z3, as the information lost
+transforming multiplication into SAT (such as commutativity at
+the bitvector level) is much less than the information lost for
+many linear operations, such as addition (commutativity for each
+bit). Also, since multiplication is so inefficient to solve using
+a SMT solver, users generally attempt to avoid multiplications if
+possible, so these numbers may not be representative of general
+usage patterns.
+
+\section{Factoring 32-bit semiprimes}
+
+The first test was conducted with 32-bit semiprimes.  The SMT-Lib
+input to Z3 is given in listing \ref{lst:smtlib}, for various values of
+n (0x5ddddbef is just an example).
+
+\begin{lstlisting}[language=Lisp,caption={SMT-Lib Input},label={lst:smtlib}]
+(declare-const p (_ BitVec 16))
+(declare-const q (_ BitVec 16))
+
+(define-fun extend ((x (_ BitVec 16))) (_ BitVec 32)
+    (concat #x0000 x))
+
+(assert (=
+    (bvmul (extend p) (extend q))
+    #x5ddddbef))
+
+(check-sat)
+(get-model)
+\end{lstlisting}
+
+The equivalent C code is given in listing \ref{lst:c_input}.  For the C solver the
+desired return value was given as input to the solver program.
+
+\begin{lstlisting}[language=C,caption={C Language input},label={lst:c_input}]
+#include <stdint.h>
+uint32_t mul(uint16_t p_, uint16_t q_) {
+    uint32_t p(p_), q(q_);
+    return p*q;
+}
+\end{lstlisting}
+
+A comparison of the performance of Z3 with cxxsat (the custom clang plugin) is
+shown in figure \ref{fig:bit16}, along with the 95\% confidence intervals for
+each measurement.  A new semiprime was generated for each test run, with the same
+semiprime being given to each solver in each run.  The Z3 solver exhibited a
+speedup of 5.58 over cxxsat in this test case, but both solvers gave results
+in less than 10 seconds.
+
+\begin{figure}
+    \input{bit16}
+    \caption{Time to factor 32-bit semiprimes}
+    \label{fig:bit16}
+\end{figure}
+
+\subsection{Factoring 40-bit semiprimes (64-bit math)}
+The solvers were then run with 40-bit semiprimes, but the numbers were given
+to the solvers as 64-bit numbers, in order to maintain the compatibility with
+C source code and to test the ability of the solvers to eliminate unnecessary
+information.  These results are displayed in figure \ref{fig:bit20}.  Only
+eight measurements were taken using 64-bit math due to the long average
+runtimes of these tests.  In addition, the ninth run had to be canceled as
+cxxsat had occupied 100\% of CPU time for over two hours and failed to produce
+a result.  Z3 exhibited a speedup of 8.71 over cxxsat for this benchmark, which
+is 1.56 times larger than the speedup for 32-bit math.  This indicates that
+the SMT solver is better at eliminating the unnecessary bits of information
+than the SAT solver backend (minisat) of cxxsat.
+
+\begin{figure}
+    \input{bit20}
+    \caption{Time to factor 40-bit semiprimes using 64-bit math}
+    \label{fig:bit20}
+\end{figure}
+
+\subsection{Factoring 40-bit semiprimes (40-bit math)}
+
+One last benchmark was conducted for this experiment.  Using the transformation
+library created for cxxsat, a custom program was written that allows the user
+to select a number of bits for the factoring problem rather than be constrained
+to C data types.  Since this program no longer has to parse an input description,
+its times are slightly lower than a general purpose solver would have.  However,
+the parse time spent by cxxsat, including problem generation, was less than 0.2
+seconds for these inputs, so the data are not significantly skewed.
+
+This program was then compared with Z3.  It also was instructed to dump the
+problem descriptions to a DIMACS file.  The minisat and cryptominisat SAT solvers
+were then run on this problem description file.  minisat is the same benchmark
+used as the backend of cxxsat, so it serves as a comparison between a generic
+SAT solving approach and a performance tuned approach using the same engine.
+The comparison with cryptominisat shows the difference between different
+highly efficient solvers.  These measurements are shown in figure
+\ref{fig:solver_comparison}.  Speedups with reference to cxxsat are shown in
+table \ref{tab:solver_comparison}.
+
+\begin{figure}
+    \input{results}
+    \caption{Time to factor 40-bit semiprimes}
+    \label{fig:solver_comparison}
+\end{figure}
+
+\begin{table}
+    \caption{Speedups (40-bits, to cxxsat)}
+    \label{tab:solver_comparison}
+    \begin{center}
+        \smallskip
+        \begin{tabular}[]{c | c}
+            solver        & speedup \\
+            \hline
+            Z3            & 5.51 \\
+            cxxsat        & 1.00 \\
+            minisat       & 2.17 \\
+            cryptominisat & 4.89
+
+        \end{tabular}
+    \end{center}
+\end{table}
+
+The speedup of Z3 of 5.51 is very similar to the 5.58 speedup observed with
+32-bit math.  This shows that the optimizations applied at the SMT level by
+Z3 are (in this case) roughly constant factor optimizations.  The advantages
+of these optimizations over the simple eager approach do not grow or shrink
+significantly with changes in the size of the problem.
+
+These results also highlight the importance of properly tuning the SAT solver
+backend.  Significant gains were made using the high-performance demo solvers
+available with minisat and cryptominisat.  Though the DPLL algorithm is
+fairly simple, optimizations as simple as educated variable selection can lead
+to obtaining a model significantly faster.  cryptominisat also includes several
+optimizations that lead to large performance gains, including XOR clause
+recovery from CNF constraints \cite{soos}.
+
+The speedup of Z3 relative to cryptominisat was only 1.13, showing that
+a sufficiently sophisticated SAT solver can achieve comparable performance
+to a SMT solver on problems, even when using the eager approach.  One must,
+however, note the limited amount of information discarded when bit-blasting
+a multiplication operation in comparison to typical linear operations such
+as bitwise operations and addition/subtraction.  Therefore, this claim may
+not be relevant for other (not measured) classes of problems.
+
+\subsection{Comparing 40-bit and 64-bit results}
+
+Solving the problem using 64-bit math took Z3 17.1 times as long as solving
+the problem using 40-bit math.  cxxsat fared even worse, taking 27.2 times
+as long.  This significant increase in runtime is due to the choice of
+multiplication in the problem description, which produces a SAT problem that
+is nonlinear ($O(n^2)$ using the basic algorithm) in size with respect to the
+size of the input.  However, Z3 did not suffer as much due to its ability to
+reason about the multiplication at the word level rather than the clause
+level (though it still exhibited a significant decrease in performance).
+
+\section{Conclusions}
+The eager approach is still a viable algorithm for proving various properties
+of computer programs or generating function preimages for reverse engineering.
+SMT solvers are capable of applying optimizations that result in significant
+performance gains over a basic eager approach.  However, use of a well-designed
+intelligent SAT solver can compensate for much of the information discarded when
+transitioning from a SMT problem representation to a SAT problem representation.
+For a generic semiprime factoring problem, an SMT solver exhibited a speedup of
+5.51 over a completely naive approach.  However, use of a high performance SAT
+solver in the backend reduced this speedup to only 1.12.  These results must
+be qualified by stating that they were measured over nonlinear (multiplicative)
+arithmetic, and thus they may not generalize well to many of the classes of
+problems in which SAT solvers are currently used.
+
+\section{Acknowledgments}
+The author would like to thank the clang developers for their work in producing
+a hackable open source c++ parser.  He also wishes to thank the U.S. department
+of defense for considering it a good use of their money to educate him, and Dr.
+Aviv for creating the \textit{SuperSecretCyber} elective and accepting (sort of)
+his constant excuses for why all his work is turned in at the last minute.
+
+\bibliographystyle{abbrv}
+\bibliography{sat}
+\end{document}
